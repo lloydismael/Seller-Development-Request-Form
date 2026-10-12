@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin – Seller Development Bookings</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <!-- Sign-in gate -->
+  <section id="gate" class="gate" hidden>
+    <div class="gate-card">
+      <h1>Seller Development Bookings</h1>
+      <p class="muted">Admin Login</p>
+      <form id="loginForm" class="login-form" autocomplete="on">
+        <label>Username<input type="text" id="lUser" name="username" autocomplete="username" required></label>
+        <label>Password<input type="password" id="lPass" name="password" autocomplete="current-password" required></label>
+        <div id="loginErr" class="alert" hidden></div>
+        <button type="submit" class="btn primary" id="loginBtn">Log in</button>
+      </form>
+      <div id="defaultCreds" class="creds" hidden></div>
+      <a class="muted small" href="/">← Back to booking form</a>
+    </div>
+  </section>
+
+  <!-- Admin app -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand">Seller Development <span>Admin</span></div>
+      <nav class="tabs">
+        <button class="tab" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="calendar">Calendar</button>
+        <button class="tab" data-tab="availability">Facilitator Availability</button>
+        <button class="tab" data-tab="bookings">Bookings</button>
+        <button class="tab" data-tab="blocks">Blocked Dates</button>
+      </nav>
+      <div class="user">
+        <span id="modeBadge" class="badge"></span>
+        <span id="userName"></span>
+        <a class="btn sm ghost" href="/">Booking form</a>
+        <button id="logoutBtn" class="btn sm ghost">Log out</button>
+      </div>
+    </header>
+    <div id="devBar" class="devbar" hidden>
+      <span><strong>Local dev mode:</strong> data is stored in this browser only (no API running).</span>
+      <button class="btn sm" id="seedBtn">Load sample data</button>
+      <button class="btn sm" id="clearBtn">Clear local data</button>
+    </div>
+    <main id="view" class="view"></main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <button class="modal-x" id="modalClose" aria-label="Close">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/form-config.js"></script>
+  <script src="/data.js"></script>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

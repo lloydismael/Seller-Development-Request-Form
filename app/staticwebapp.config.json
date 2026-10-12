@@ -1,0 +1,13 @@
+{
+  "routes": [
+    { "route": "/.auth/login/github", "statusCode": 404 },
+    { "route": "/.auth/login/twitter", "statusCode": 404 }
+  ],
+  "navigationFallback": { "rewrite": "/index.html", "exclude": ["/admin/*", "/api/*", "/*.{css,js,json,png,jpg,svg,ico}"] },
+  "platform": { "apiRuntime": "node:20" },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+  }
+}

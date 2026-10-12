@@ -1,0 +1,6 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "sdrf": { "appLocation": "app", "apiLocation": "api", "outputLocation": "." }
+  }
+}

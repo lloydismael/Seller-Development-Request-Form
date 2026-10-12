@@ -1,0 +1,11 @@
+{
+  "name": "sdrf-api",
+  "version": "1.0.0",
+  "description": "Seller Development booking API (Azure Static Web Apps managed functions)",
+  "main": "src/functions/*.js",
+  "scripts": { "start": "func start" },
+  "dependencies": {
+    "@azure/data-tables": "^13.2.2",
+    "@azure/functions": "^4.5.0"
+  }
+}

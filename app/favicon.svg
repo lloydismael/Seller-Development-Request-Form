@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Seller Development Bookings</title>
+  <rect width="32" height="32" rx="7" fill="#343767"/>
+  <rect x="6" y="8" width="20" height="19" rx="3" fill="#fff"/>
+  <path d="M6 14h20" stroke="#343767" stroke-width="2"/>
+  <path d="M11 6v5m10-5v5" stroke="#e6e6f2" stroke-width="3" stroke-linecap="round"/>
+  <path d="m11 20 3 3 7-6" fill="none" stroke="#343767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

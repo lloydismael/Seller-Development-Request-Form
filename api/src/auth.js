@@ -12,6 +12,10 @@ const SECRET = process.env.SESSION_SECRET || "sdrf-dev-secret-change-me";
 const COOKIE = "sdrf_admin";
 const TTL = 8 * 60 * 60; // 8 hours
 
+if ((process.env.WEBSITE_SITE_NAME || process.env.NODE_ENV === "production") &&
+    (!process.env.ADMIN_PASSWORD || PASS === "Admin@123" || !process.env.SESSION_SECRET || SECRET === "sdrf-dev-secret-change-me" || SECRET.length < 32))
+  throw new Error("Production ADMIN_PASSWORD and a SESSION_SECRET of at least 32 characters are required.");
+
 if (!process.env.ADMIN_PASSWORD || !process.env.SESSION_SECRET)
   console.warn("[auth] Using DEFAULT admin credentials/secret – set ADMIN_PASSWORD and SESSION_SECRET for production.");
 

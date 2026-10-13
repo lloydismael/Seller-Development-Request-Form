@@ -288,5 +288,7 @@
     document.getElementById("thanks").hidden = true; form.hidden = false; render(true);
   });
   document.getElementById("formTitle").textContent = CFG.title; document.title = CFG.title;
+  if (["localhost","127.0.0.1","[::1]"].includes(location.hostname) && new URLSearchParams(location.search).get("storage") === "local")
+    document.querySelector(".admin-btn").href = "/admin/?storage=local";
   render();
 })();

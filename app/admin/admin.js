@@ -100,7 +100,15 @@
   }
 
   // ---------- shell ----------
-  mode = await S.mode();
+  try { mode = await S.mode(); }
+  catch (err) {
+    $("#gate").hidden = false;
+    $("#loginErr").textContent = err.message;
+    $("#loginErr").hidden = false;
+    $("#loginForm").onsubmit = e => { e.preventDefault(); location.reload(); };
+    $("#loginBtn").textContent = "Retry connection";
+    return;
+  }
   let user = (await S.me()).user;
   if (!user) user = await showLogin();
   $("#app").hidden = false;

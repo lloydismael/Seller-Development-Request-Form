@@ -118,72 +118,15 @@ still be rotated even when switching to managed identity.
 The active frontend workflow is
 `.github/workflows/azure-static-web-apps-yellow-mushroom-07fa45d00.yml`, targeting
 **SellerDevelopment** at `yellow-mushroom-07fa45d00.4.azurestaticapps.net`.
-It tests the API and checks frontend JavaScript syntax with Node.js 22 before uploading
-the already-static `app/` directory. `api_location` stays empty: it never deploys the linked API.
-There are no path filters; every push to `main` or `dev` triggers the workflow.
 
-| Event | Frontend destination | API workflow |
-|---|---|---|
-| Push to `main` | Existing production site (`production_branch: main`) | Tests, then production API deployment if OIDC prerequisites are configured |
-| Push to `dev` | Stable **branch** preview for `dev` | Tests only; no API deployment |
-| PR opened, synchronized or reopened against `main` | Separate PR-number preview | Tests only; no API deployment |
-| PR closed against `main` | Authenticated cleanup of that PR preview only | No API deployment |
-
-The existing preview `yellow-mushroom-07fa45d00-1.eastasia.4.azurestaticapps.net`
-is **PR #1**, with environment name `1` and source branch `dev`; it is not the stable
-`dev` branch environment. A successful `dev` push with this workflow creates/updates
-the branch preview (expected URL:
-`yellow-mushroom-07fa45d00-dev.eastasia.4.azurestaticapps.net`). Confirm the actual URL
-in the deployment output or SellerDevelopment's Environments view after that push.
-Concurrency separates PR previews from branch refs. PR cleanup uses the same
-`AZURE_STATIC_WEB_APPS_API_TOKEN_YELLOW_MUSHROOM_07FA45D00` secret as uploads,
-without checking out or executing PR code. Fork PRs do not receive this deployment secret.
-
-**Dev shares the production API and data.** It is a frontend preview, not an isolated backend.
-Preview API routing must use the existing production Function App; these workflows do not
-create or change backend links. Once connected, submissions and admin edits from dev
-affect production records. Do not use real production writes to test UI changes.
-API changes on `dev` are tested but not published, so its frontend must remain compatible
-with the currently deployed production API.
-
-`.github/workflows/production-api.yml` publishes only after successful tests on a
-**push to `main`**, to the existing Flex Consumption app **func-booking-prod-8941**.
-It uses `azure/login@v2` OIDC and `Azure/functions-action@v1` with
-`sku: flexconsumption` and `remote-build: true`. The package is staged in runner temp
-from an allowlist: `api/host.json`, `api/package.json`, `api/package-lock.json`, and `api/src/`
-only. Local settings, credentials, migration exports, tests, scripts, and local `node_modules`
-are not included; the remote build installs dependencies. Production runs are not canceled
-by newer pushes. No workflow provisions resources or modifies backend configuration.
-
-### Production API OIDC prerequisites (operator setup required)
-
-The following repository variables are not currently configured. The deployment job
-fails explicitly **before Azure login** if any are missing; dev and PR tests still run:
-
-- `AZURE_CLIENT_ID`: client ID of the deployment identity.
-- `AZURE_TENANT_ID`: tenant ID containing that identity.
-- `AZURE_SUBSCRIPTION_ID`: subscription ID containing the existing Function App.
-
-Configure a deployment identity with **Website Contributor** scoped to
-`func-booking-prod-8941` (not subscription-wide Owner), and a federated credential:
-
-- Issuer: `https://token.actions.githubusercontent.com`
-- Audience: `api://AzureADTokenExchange`
-- Subject: `repo:lloydismael/Seller-Development-Request-Form:ref:refs/heads/main`
-
-Only the main deployment job receives `id-token: write`; tests do not authenticate to Azure.
-The Function App's runtime identity separately needs **Storage Table Data Contributor**
-on `sellerdevelopment`; the CI deployment identity does not need access to booking data.
-No client secret, publish profile, or secret value should be added to the repository or logs.
-
-These changes are initially on `dev`. Main production routing and API automation take effect
-only once the **workflow/documentation changes are separately reviewed and promoted to `main`**.
-Do not merge the dev form design merely to enable CI/CD. Committing alone does not deploy;
-an explicit push triggers Actions. The legacy ambitious-sky workflow is manual-only and is
-**not** the SellerDevelopment target, avoiding duplicate automatic deployments.
-
-References: [SWA branch previews](https://learn.microsoft.com/azure/static-web-apps/branch-environments)
-and [Functions action OIDC and Flex parameters](https://github.com/Azure/functions-action).
+- Every push to `main` updates the existing production Static Web App.
+- Pull requests against `main` create or update PR previews only; closing a PR performs
+  authenticated cleanup of that preview.
+- `dev` is for local development. Pushes to `dev` do not deploy a stable environment;
+  an open PR against `main` can still receive preview updates.
+- The linked Functions API is deployed separately and remains unchanged. The frontend
+  workflow keeps `api_location` empty; there is no production API pipeline.
+- The legacy ambitious-sky workflow remains manual-only.
 
 ## Preserve and migrate existing browser responses
 

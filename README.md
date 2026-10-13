@@ -113,6 +113,21 @@ Existing target: **SellerDevelopment**, Standard Static Web App in **PersonalRG*
 No hosting resources or storage-account keys are embedded in frontend files. An exposed account key must
 still be rotated even when switching to managed identity.
 
+## GitHub Actions branch routing
+
+The active frontend workflow is
+`.github/workflows/azure-static-web-apps-yellow-mushroom-07fa45d00.yml`, targeting
+**SellerDevelopment** at `yellow-mushroom-07fa45d00.4.azurestaticapps.net`.
+
+- Every push to `main` updates the existing production Static Web App.
+- Pull requests against `main` create or update PR previews only; closing a PR performs
+  authenticated cleanup of that preview.
+- `dev` is for local development. Pushes to `dev` do not deploy a stable environment;
+  an open PR against `main` can still receive preview updates.
+- The linked Functions API is deployed separately and remains unchanged. The frontend
+  workflow keeps `api_location` empty; there is no production API pipeline.
+- The legacy ambitious-sky workflow remains manual-only.
+
 ## Preserve and migrate existing browser responses
 
 - Data belongs to each browser profile and origin. Export complete JSON from the origin where responses

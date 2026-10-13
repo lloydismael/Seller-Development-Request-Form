@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "booking-prod-8941" },
+    "location": { "value": "southeastasia" },
+    "sessionId": { "value": "89416f71-32ae-4d9a-9cb8-ac7fea2b45cd" },
+    "deployedBy": { "value": "Lloyd" },
+    "createdAt": { "value": "2026-10-13T15:03:24.3807887Z" },
+    "resourceGroupName": { "value": "PersonalRG" },
+    "functionAppName": { "value": "func-booking-prod-8941" },
+    "planName": { "value": "asp-booking-prod-8941" },
+    "storageAccountName": { "value": "stbookingprod8941" },
+    "deploymentContainerName": { "value": "function-releases" },
+    "workspaceName": { "value": "log-booking-prod-8941" },
+    "appInsightsName": { "value": "appi-booking-prod-8941" },
+    "applicationStorageAccountName": { "value": "sellerdevelopment" },
+    "staticWebAppName": { "value": "SellerDevelopment" },
+    "adminUsername": { "value": "admin" },
+    "frontendOrigins": { "value": ["https://sellerdevelopmentrf.clouditechsolution.com", "https://yellow-mushroom-07fa45d00.4.azurestaticapps.net"] }
+  }
+}

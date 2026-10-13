@@ -1,4 +1,6 @@
 node_modules/
 api/.data/
 api/local.settings.json
+.copilot-azure/
+api/.migration/
 .DS_Store

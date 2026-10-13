@@ -1,12 +1,14 @@
 (function () {
   const CFG = window.FORM_CONFIG, Q = CFG.questions, S = window.BookingStore;
   const answers = {}, otherText = {};
-  const container = document.getElementById("questions");
-  const form = document.getElementById("bookingForm");
-  let avail = null; // availability for the selected date
-
-  const choiceObj = c => (typeof c === "string" ? { label: c } : c);
-  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
+  const back = document.getElementById("backBtn"), next = document.getElementById("nextBtn");
+  const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let current = CFG.start, reviewing = false, moving = false, submitting = false;
+  let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0;
+  const choiceObj = c => typeof c === "string" ? { label:c } : c;
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
   const isAnswered = id => {
     const v = answers[id];
     if (Array.isArray(v)) return v.length > 0;
@@ -14,12 +16,17 @@
     return v !== undefined && String(v).trim() !== "";
   };
   const valueOf = id => {
-    let v = answers[id];
-    if (v === "__other__") v = (otherText[id] || "").trim();
+    const v = answers[id] === "__other__" ? (otherText[id] || "").trim() : answers[id];
     return Array.isArray(v) ? v.join("; ") : (v ?? "");
   };
+  const cancelAuto = () => { clearTimeout(autoTimer); autoTimer = undefined; };
+  const scheduling = id => id === "facilitator" || id === "time";
+  const availabilityReady = () => availabilityState === "ready" && avail?.date === answers.date;
+  const localToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
 
-  // Follow branching rules based on current answers.
   function visiblePath() {
     const path = [], seen = new Set();
     let id = CFG.start;
@@ -28,164 +35,260 @@
       const q = Q[id], opts = (q.choices || []).map(choiceObj);
       if (opts.some(c => c.goto)) {
         if (!isAnswered(id)) break;
-        const sel = opts.find(c => c.label === answers[id]);
-        id = (sel && sel.goto) || q.next;
+        id = opts.find(c => c.label === answers[id])?.goto || q.next;
       } else id = q.next;
     }
     return path;
   }
 
-  function renderQuestion(id, num) {
-    const q = Q[id], card = document.createElement("div");
-    card.className = "q-card"; card.dataset.id = id;
-    let html = `<div class="q-title"><span class="num">${num}.</span> ${esc(q.title)}${q.required ? ' <span class="req">*</span>' : ""}</div>`;
-    if (q.type === "multi" && q.max) html += `<div class="hint">Select up to ${q.max} options.</div>`;
-    if (id === "facilitator" || id === "time") html += `<div class="hint avail-hint"></div>`;
+  // Estimate remaining branches from configuration, not a hardcoded question count.
+  function routeLengths(id = CFG.start, seen = new Set()) {
+    if (!id || !Q[id] || seen.has(id)) return [0];
+    const visited = new Set(seen).add(id), q = Q[id], opts = (q.choices || []).map(choiceObj);
+    const selected = opts.find(c => c.label === answers[id]);
+    const destinations = opts.some(c => c.goto)
+      ? (selected ? [selected.goto || q.next] : opts.map(c => c.goto || q.next)) : [q.next];
+    return [...new Set(destinations.flatMap(dest => routeLengths(dest,visited).map(n => n+1)))];
+  }
 
+  function updateProgress() {
+    const path = visiblePath(), lengths = routeLengths(), total = Math.max(...lengths), index = path.indexOf(current);
+    const percent = Math.round(path.filter(isAnswered).length / total * 100);
+    document.getElementById("stepLabel").textContent = reviewing ? "Review your request" : `Question ${index+1}${lengths.length === 1 ? ` of ${total}` : ""}`;
+    document.getElementById("progressLabel").textContent = `${percent}% complete`;
+    document.getElementById("formProgress").value = percent;
+    back.disabled = moving || submitting || (!reviewing && index === 0);
+    next.hidden = reviewing; submit.hidden = !reviewing;
+    next.disabled = moving || submitting || (scheduling(current) && !availabilityReady());
+    submit.disabled = moving || submitting;
+    const last = index === path.length-1 && !Q[current].next && !(Q[current].choices || []).some(c => choiceObj(c).goto);
+    next.innerHTML = `${last ? "Review request" : "Continue"} <span aria-hidden="true">→</span>`;
+  }
+
+  function renderQuestion(id,num) {
+    const q = Q[id], card = document.createElement("section");
+    card.className = "q-card"; card.dataset.id = id;
+    const choice = q.type === "choice" || q.type === "multi";
+    const hint = q.type === "multi" ? (q.max ? `Select up to ${q.max} options, then continue.` : "Select all that apply, then continue.")
+      : choice ? "Choose an option to move to the next card. You can always go back."
+      : id === "name" ? "Let’s start with you. Who is making this request?"
+      : id === "recommendations" ? "Tell us what would make this training useful for your team."
+      : q.type === "date" ? "Choose your preferred date. We’ll check the available facilitators."
+      : "Enter your answer, then continue when you’re ready.";
+    let html = `<div class="question-meta"><span class="question-number">QUESTION ${String(num).padStart(2,"0")}</span>${q.required ? '<span class="required-badge">Required</span>' : ""}</div>`;
+    if (choice) html += '<fieldset class="question-group">';
+    html += `<${choice ? "legend" : "h2"} class="q-title" id="title-${id}" tabindex="-1">${esc(q.title)}</${choice ? "legend" : "h2"}><p class="hint" id="hint-${id}">${hint}</p>`;
+    if (scheduling(id)) html += '<p class="avail-hint" role="status"></p><button type="button" class="btn retry-btn" hidden>Retry availability</button>';
+    const attrs = `aria-labelledby="title-${id}" aria-describedby="hint-${id} error-${id}" ${q.required ? 'aria-required="true"' : ""}`;
     if (q.type === "text") {
-      html += `<input type="text" class="text-in" placeholder="Enter your answer" value="${esc(answers[id] || "")}">`;
+      if (id === "recommendations") html += `<textarea class="text-in" rows="4" placeholder="Share your goals, requests, or recommendations…" ${attrs}>${esc(answers[id] || "")}</textarea>`;
+      else html += `<input type="text" class="text-in" ${id === "name" ? 'autocomplete="name" placeholder="Your full name"' : 'inputmode="numeric" placeholder="e.g. 25"'} value="${esc(answers[id] || "")}" ${attrs}>`;
     } else if (q.type === "date") {
-      html += `<input type="date" class="text-in date-in" min="${new Date().toISOString().slice(0, 10)}" value="${esc(answers[id] || "")}">`;
+      html += `<input type="date" class="text-in date-in" min="${localToday()}" value="${esc(answers[id] || "")}" ${attrs}>`;
     } else {
       const multi = q.type === "multi", cur = answers[id];
-      html += `<div class="options">`;
+      const compact = q.choices.length > 4 && q.choices.every(c => choiceObj(c).label.length < 40);
+      html += `<div class="options${compact ? " compact" : ""}">`;
       q.choices.map(choiceObj).forEach(c => {
         const checked = multi ? (cur || []).includes(c.label) : cur === c.label;
-        html += `<label class="opt"><input type="${multi ? "checkbox" : "radio"}" name="${id}" value="${esc(c.label)}" ${checked ? "checked" : ""}><span>${esc(c.label)}</span><span class="tag" hidden></span></label>`;
+        html += `<label class="opt${checked ? " selected" : ""}"><input type="${multi ? "checkbox" : "radio"}" name="${id}" value="${esc(c.label)}" ${checked ? "checked" : ""} aria-describedby="hint-${id} error-${id}"><span class="option-label">${esc(c.label)}</span><span class="tag" hidden></span><span class="choice-mark" aria-hidden="true">✓</span></label>`;
       });
-      if (q.allowOther) {
-        html += `<label class="opt other"><input type="radio" name="${id}" value="__other__" ${cur === "__other__" ? "checked" : ""}><span>Other</span>
-                 <input type="text" class="other-in" placeholder="Other answer" value="${esc(otherText[id] || "")}"></label>`;
-      }
-      html += `</div>`;
+      if (q.allowOther) html += `<label class="opt other${cur === "__other__" ? " selected" : ""}"><input type="radio" name="${id}" value="__other__" ${cur === "__other__" ? "checked" : ""}><span class="option-label">Other venue</span><span class="choice-mark" aria-hidden="true">✓</span><input type="text" class="other-in" placeholder="Enter your preferred venue" aria-label="Other venue" aria-describedby="error-${id}" value="${esc(otherText[id] || "")}" ${cur === "__other__" ? "" : "hidden"}></label>`;
+      html += "</div>";
     }
-    html += `<div class="err" hidden>This question is required.</div>`;
-    card.innerHTML = html;
+    html += `<div class="err" id="error-${id}" role="alert" hidden>Please answer this question to continue.</div>`;
+    if (choice) html += "</fieldset>";
+    card.innerHTML = html; return card;
+  }
+
+  function renderReview() {
+    const card = document.createElement("section"); card.className = "q-card";
+    card.innerHTML = '<div class="question-meta"><span class="question-number">ONE LAST LOOK</span><span class="required-badge">Ready to send</span></div><h2 class="q-title" tabindex="-1">Looking good. Let’s review.</h2><p class="hint">Check the details below. Your request will be sent for approval.</p><dl class="review-list">' + visiblePath().map(id => `<div class="review-row"><div class="review-answer"><dt>${esc(Q[id].title)}</dt><dd>${esc(valueOf(id))}</dd></div><button type="button" class="edit-btn" data-edit="${id}" aria-label="Edit ${esc(Q[id].title)}">Edit</button></div>`).join("") + "</dl>";
     return card;
   }
 
-  function render() {
-    container.innerHTML = "";
-    visiblePath().forEach((id, i) => container.appendChild(renderQuestion(id, i + 1)));
-    applyAvailability();
+  function render(focus = false) {
+    cancelAuto(); const path = visiblePath();
+    if (!path.includes(current)) current = path[path.length-1];
+    container.replaceChildren(reviewing ? renderReview() : renderQuestion(current,path.indexOf(current)+1));
+    error.hidden = true; syncOptions(); updateProgress();
+    document.getElementById("stepAnnouncement").textContent = reviewing ? "Review your request before submitting." : `Question ${path.indexOf(current)+1}. ${Q[current].title}`;
+    if (focus && container.getBoundingClientRect().top < 0) document.querySelector(".progress-meta").scrollIntoView({ behavior:reducedMotion.matches ? "auto" : "smooth", block:"start" });
+    if (focus && !container.inert) container.querySelector(".q-title").focus({ preventScroll:true });
   }
 
-  // ---------- facilitator availability ----------
+  async function navigate(id,review = false,direction = 1) {
+    cancelAuto(); if (moving || submitting) return;
+    moving = true; updateProgress(); container.inert = true;
+    try {
+      if (!reducedMotion.matches && container.animate) await container.animate([
+        { opacity:1,transform:"translateX(0)" }, { opacity:0,transform:`translateX(${-direction*24}px)` }
+      ], { duration:120,easing:"ease-in" }).finished;
+      current = id; reviewing = review; render(true);
+      if (!reducedMotion.matches && container.animate) await container.animate([
+        { opacity:0,transform:`translateX(${direction*32}px)` }, { opacity:1,transform:"translateX(0)" }
+      ], { duration:250,easing:"cubic-bezier(.22,1,.36,1)" }).finished;
+    } finally {
+      container.inert = false; moving = false; updateProgress();
+      container.querySelector(".q-title").focus({ preventScroll:true });
+    }
+  }
+
+  function invalidReason(id) {
+    if (Q[id].required && !isAnswered(id)) return "Please answer this question to continue.";
+    if (id === "date" && (!/^\d{4}-\d{2}-\d{2}$/.test(answers.date || "") || answers.date < localToday())) return "Choose today or a future training date.";
+    if (scheduling(id) && !availabilityReady()) return availabilityState === "error" ? "Availability couldn’t be checked. Please retry or choose another date." : "Please wait while we check availability.";
+    return "";
+  }
+  function showError(message) {
+    const card = container.querySelector("[data-id]");
+    if (!card) { error.textContent = message; error.hidden = false; return; }
+    const inline = card.querySelector(".err"); inline.textContent = message; inline.hidden = false; card.classList.add("invalid");
+    card.querySelectorAll("input,textarea").forEach(el => el.setAttribute("aria-invalid","true"));
+    (card.querySelector('input:checked:not(:disabled),textarea,input:not(:disabled)') || card.querySelector(".q-title")).focus();
+  }
+  async function advance() {
+    cancelAuto(); if (moving || submitting || reviewing) return;
+    const reason = invalidReason(current); if (reason) { showError(reason); return; }
+    const path = visiblePath(), index = path.indexOf(current);
+    if (index < path.length-1) { await navigate(path[index+1]); return; }
+    const bad = path.find(id => invalidReason(id));
+    if (bad) { await navigate(bad); showError(invalidReason(bad)); return; }
+    await navigate(current,true);
+  }
+
+  // Answer invalidation must work even when scheduling cards are off-screen.
+  function reconcileAvailability() {
+    if (!availabilityReady()) return;
+    let invalidated = false;
+    if ((avail.blocked || []).includes(answers.facilitator)) {
+      delete answers.facilitator; delete answers.time; invalidated = true;
+    }
+    if (answers.time && (avail.busy || []).some(b => b.facilitator === answers.facilitator && S.overlaps(b.time,answers.time))) {
+      delete answers.time; invalidated = true;
+    }
+    if (invalidated) cancelAuto();
+  }
   async function loadAvailability() {
-    const d = answers.date;
-    if (!d) { avail = null; applyAvailability(); return; }
+    const d = answers.date, version = ++requestVersion;
+    cancelAuto(); avail = null; availabilityState = d ? "loading" : "idle"; syncOptions(); updateProgress();
+    if (!d) return;
     try {
       const data = await S.availability(d);
-      if (answers.date === d) { avail = data; applyAvailability(); }
-    } catch { avail = null; applyAvailability(); }
-  }
-  function setDisabled(opt, input, dis, tag) {
-    input.disabled = dis; if (dis) input.checked = false;
-    opt.classList.toggle("disabled", dis);
-    const t = opt.querySelector(".tag"); if (t) { t.hidden = !dis; t.textContent = tag; }
-  }
-  function applyAvailability() {
-    const fc = container.querySelector('[data-id="facilitator"]'), tc = container.querySelector('[data-id="time"]');
-    const blocked = new Set((avail && avail.blocked) || []);
-    if (fc) {
-      fc.querySelector(".avail-hint").textContent = avail ? `Availability shown for ${avail.date}.` : "Select a training date to see availability.";
-      fc.querySelectorAll(".opt").forEach(o => {
-        const inp = o.querySelector("input"), dis = blocked.has(inp.value);
-        setDisabled(o, inp, dis, "Unavailable");
-        if (dis && answers.facilitator === inp.value) delete answers.facilitator;
-      });
+      if (version !== requestVersion || answers.date !== d) return;
+      avail = { ...data,date:d }; availabilityState = "ready"; reconcileAvailability();
+    } catch {
+      if (version !== requestVersion || answers.date !== d) return;
+      availabilityState = "error";
     }
-    if (tc) {
-      const f = answers.facilitator;
-      tc.querySelector(".avail-hint").textContent = f && avail ? `Slots already booked for ${f} are disabled.` : "";
-      tc.querySelectorAll(".opt").forEach(o => {
-        const inp = o.querySelector("input");
-        const dis = !!(avail && f && avail.busy.some(b => b.facilitator === f && S.overlaps(b.time, inp.value)));
-        setDisabled(o, inp, dis, "Booked");
-        if (dis && answers.time === inp.value) delete answers.time;
-      });
+    syncOptions(); updateProgress();
+  }
+  function syncOptions() {
+    const card = container.querySelector("[data-id]"); if (!card) return;
+    const id = card.dataset.id, q = Q[id], ready = availabilityReady();
+    if (scheduling(id)) {
+      card.querySelector(".avail-hint").textContent = availabilityState === "loading" ? "Checking availability…" : availabilityState === "error" ? "We couldn’t check availability. Retry, or go back to choose another date."
+        : ready ? `Availability for ${avail.date}. ${id === "facilitator" ? "Unavailable facilitators are disabled." : "Booked and overlapping slots are disabled."}` : "Choose a training date first.";
+      card.querySelector(".retry-btn").hidden = availabilityState !== "error";
     }
+    const atMax = q.type === "multi" && q.max && (answers[id] || []).length >= q.max;
+    card.querySelectorAll(".opt").forEach(opt => {
+      const inp = opt.querySelector("input"), multi = q.type === "multi";
+      inp.checked = multi ? (answers[id] || []).includes(inp.value) : answers[id] === inp.value;
+      let tag = "", disabled = !!(atMax && !inp.checked);
+      if (disabled) tag = "Limit reached";
+      if (scheduling(id)) {
+        const unavailable = id === "facilitator" ? (avail?.blocked || []).includes(inp.value)
+          : (avail?.busy || []).some(b => b.facilitator === answers.facilitator && S.overlaps(b.time,inp.value));
+        disabled = !ready || unavailable;
+        if (unavailable && ready) tag = id === "facilitator" ? "Unavailable" : "Booked";
+      }
+      inp.disabled = disabled; opt.classList.toggle("disabled",disabled); opt.classList.toggle("selected",inp.checked);
+      const badge = opt.querySelector(".tag"); if (badge) { badge.hidden = !tag; badge.textContent = tag; }
+      const other = opt.querySelector(".other-in"); if (other) other.hidden = !inp.checked;
+    });
+  }
+  function clearError(card) {
+    card.querySelector(".err").hidden = true; card.classList.remove("invalid"); error.hidden = true;
+    card.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
   }
 
-  // ---------- events ----------
-  container.addEventListener("input", e => {
-    const card = e.target.closest(".q-card"); if (!card) return;
-    const id = card.dataset.id, q = Q[id];
+  container.addEventListener("input",e => {
+    const card = e.target.closest("[data-id]"); if (!card || moving || submitting) return;
+    const id = card.dataset.id, q = Q[id]; cancelAuto();
     if (e.target.classList.contains("other-in")) {
-      otherText[id] = e.target.value; answers[id] = "__other__";
-      card.querySelector('input[value="__other__"]').checked = true;
+      otherText[id] = e.target.value; answers[id] = "__other__"; syncOptions();
     } else if (q.type === "text" || q.type === "date") {
-      answers[id] = e.target.value;
-      if (id === "date") loadAvailability();
+      const before = answers[id]; answers[id] = e.target.value;
+      if (id === "date" && before !== answers[id]) loadAvailability();
     }
-    card.querySelector(".err").hidden = true; card.classList.remove("invalid");
+    clearError(card); updateProgress();
   });
-
-  container.addEventListener("change", e => {
-    const card = e.target.closest(".q-card"); if (!card) return;
-    const id = card.dataset.id, q = Q[id];
-    if (q.type === "multi") {
-      const boxes = [...card.querySelectorAll('input[type="checkbox"]')];
-      if (q.max && boxes.filter(b => b.checked).length > q.max) { e.target.checked = false; return; }
-      answers[id] = boxes.filter(b => b.checked).map(b => b.value);
-      if (q.max) boxes.forEach(b => (b.disabled = !b.checked && answers[id].length >= q.max));
+  container.addEventListener("change",e => {
+    const card = e.target.closest("[data-id]"); if (!card || moving || submitting) return;
+    const id = card.dataset.id, q = Q[id]; cancelAuto();
+    if (e.target.type === "checkbox") {
+      const checked = [...card.querySelectorAll('input[type="checkbox"]:checked')];
+      if (q.max && checked.length > q.max) { e.target.checked = false; return; }
+      answers[id] = checked.map(b => b.value);
     } else if (e.target.type === "radio") {
-      const before = answers[id];
       answers[id] = e.target.value;
-      if (e.target.value === "__other__") card.querySelector(".other-in").focus();
-      if (q.choices.map(choiceObj).some(c => c.goto) && before !== answers[id]) { render(); return; }
-      if (id === "facilitator") applyAvailability();
+      if (id === "facilitator") reconcileAvailability();
+    } else return;
+    syncOptions(); clearError(card); updateProgress();
+    if (e.target.value === "__other__") { card.querySelector(".other-in").focus(); return; }
+    if (e.target.type === "radio") {
+      const selected = answers[id];
+      autoTimer = setTimeout(() => {
+        if (current === id && answers[id] === selected && !invalidReason(id)) advance();
+      },550);
     }
-    card.querySelector(".err").hidden = true; card.classList.remove("invalid");
   });
-
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const path = visiblePath();
-    let firstBad = null;
-    path.forEach(id => {
-      const card = container.querySelector(`[data-id="${id}"]`);
-      const bad = Q[id].required && !isAnswered(id);
-      card.querySelector(".err").hidden = !bad; card.classList.toggle("invalid", bad);
-      if (bad && !firstBad) firstBad = card;
-    });
-    if (firstBad) { firstBad.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
-
-    const rec = { answers: {} };
-    path.forEach(id => {
-      const v = valueOf(id);
-      rec.answers[Q[id].title] = v;
-      if (Q[id].field) rec[Q[id].field] = v;
-    });
-
-    const btn = document.getElementById("submitBtn");
-    btn.disabled = true; btn.textContent = "Submitting...";
+  container.addEventListener("click",e => {
+    const edit = e.target.closest("[data-edit]"); if (edit) navigate(edit.dataset.edit,false,-1);
+    if (e.target.closest(".retry-btn")) loadAvailability();
+  });
+  form.addEventListener("keydown",e => {
+    if (e.isComposing || e.key !== "Enter" || ["TEXTAREA","BUTTON","A"].includes(e.target.tagName)) return;
+    if (!reviewing) { e.preventDefault(); advance(); }
+  });
+  next.addEventListener("click",advance);
+  back.addEventListener("click",() => {
+    cancelAuto(); const path = visiblePath(), index = path.indexOf(current);
+    if (reviewing) navigate(path[path.length-1],false,-1);
+    else if (index > 0) navigate(path[index-1],false,-1);
+  });
+  form.addEventListener("submit",async e => {
+    e.preventDefault(); cancelAuto(); if (!reviewing || moving || submitting) return;
+    reconcileAvailability();
+    const path = visiblePath(), bad = path.find(id => invalidReason(id));
+    if (bad) { await navigate(bad); showError(invalidReason(bad)); return; }
+    const rec = { answers:{} };
+    path.forEach(id => { const v = valueOf(id); rec.answers[Q[id].title] = v; if (Q[id].field) rec[Q[id].field] = v; });
+    submitting = true; container.inert = true; error.hidden = true; updateProgress(); submit.textContent = "Submitting…";
     try {
       await S.create(rec);
-      showThanks(rec);
+      form.hidden = true; document.getElementById("thanks").hidden = false;
+      document.getElementById("summary").innerHTML = Object.entries(rec.answers).map(([k,v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+      document.querySelector("#thanks h2").focus();
     } catch (err) {
-      alert(err.status === 409 ? "That slot is no longer available:\n\n" + err.message + "\n\nPlease choose another facilitator, date or time." : "Submission failed: " + err.message);
-      if (err.status === 409) loadAvailability();
-    } finally { btn.disabled = false; btn.textContent = "Submit"; }
+      submitting = false; container.inert = false;
+      if (err.status === 409) {
+        await loadAvailability(); const target = !isAnswered("facilitator") ? "facilitator" : "time"; delete answers.time;
+        await navigate(target,false,-1); showError(`That slot is no longer available. ${err.message} Please choose another date, facilitator, or time.`);
+      } else { error.textContent = `Submission failed: ${err.message}. Your answers are still here. Please try again.`; error.hidden = false; }
+    } finally {
+      submitting = false; container.inert = false; submit.innerHTML = 'Submit request <span aria-hidden="true">→</span>'; updateProgress();
+    }
   });
-
-  function showThanks(rec) {
-    form.hidden = true;
-    document.getElementById("thanks").hidden = false;
-    document.getElementById("summary").innerHTML = Object.entries(rec.answers)
-      .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  document.getElementById("againBtn").addEventListener("click", () => {
-    Object.keys(answers).forEach(k => delete answers[k]);
-    Object.keys(otherText).forEach(k => delete otherText[k]);
-    avail = null;
-    document.getElementById("thanks").hidden = true; form.hidden = false;
-    render();
+  document.getElementById("againBtn").addEventListener("click",() => {
+    cancelAuto(); ++requestVersion;
+    Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
+    avail = null; availabilityState = "idle"; current = CFG.start; reviewing = false;
+    document.getElementById("thanks").hidden = true; form.hidden = false; render(true);
   });
-
-  document.getElementById("formTitle").textContent = CFG.title;
-  document.title = CFG.title;
+  document.getElementById("formTitle").textContent = CFG.title; document.title = CFG.title;
+  if (["localhost","127.0.0.1","[::1]"].includes(location.hostname) && new URLSearchParams(location.search).get("storage") === "local")
+    document.querySelector(".admin-btn").href = "/admin/?storage=local";
   render();
 })();

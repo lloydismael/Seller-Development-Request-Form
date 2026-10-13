@@ -15,7 +15,10 @@ async function body(req) { try { return await req.json(); } catch { return null;
 
 app.http("health", {
   methods: ["GET"], authLevel: "anonymous", route: "health",
-  handler: async () => json(200, { ok: true, storage: store.kind })
+  handler: async () => {
+    try { await store.checkConnection(); return json(200, { ok:true, storage:store.kind }); }
+    catch { return json(503, { ok:false, error:"Storage is unavailable. Check backend storage configuration and permissions." }); }
+  }
 });
 
 // Public: submit a booking. Admin: list all bookings.

@@ -50,11 +50,23 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   const fail = (status, msg) => Object.assign(new Error(msg), { status });
 
+  const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  // Static UI testing is deliberately opt-in; full-stack local testing defaults to API.
+  const localOnly = isLocalHost && new URLSearchParams(location.search).get("storage") === "local";
   let modeP;
   function mode() {
-    return modeP || (modeP = fetch("/api/health", { cache: "no-store" })
-      .then(r => (r.ok && (r.headers.get("content-type") || "").includes("json") ? "api" : "local"))
-      .catch(() => "local"));
+    if (localOnly) return Promise.resolve("local");
+    return modeP || (modeP = fetch("/api/health", { cache:"no-store", signal:AbortSignal.timeout(10000) })
+      .then(async r => {
+        if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw new Error("API unavailable");
+        const data = await r.json();
+        if (data.ok !== true || (!isLocalHost && data.storage !== "table")) throw new Error("Shared storage unavailable");
+        return "api";
+      })
+      .catch(() => {
+        modeP = null;
+        throw fail(503, "Shared booking storage is unavailable. Please retry; no response has been saved in this browser.");
+      }));
   }
   async function api(method, url, body) {
     const r = await fetch(url, {
@@ -128,6 +140,9 @@
       sessionStorage.removeItem(SS_ADMIN);
     },
     // local-mode helpers (sample data / reset)
-    replaceLocal(bookings, blocks) { write(LS_B, bookings); write(LS_BL, blocks); }
+    replaceLocal(bookings, blocks) {
+      if (!localOnly) throw fail(403, "Browser data replacement is available only in explicit local UI testing mode.");
+      write(LS_B, bookings); write(LS_BL, blocks);
+    }
   };
 })();

@@ -1,7 +1,7 @@
 # Seller Development Request Form + Admin Portal
 
 Azure Static Web App: public booking form (`/`) and an administrator portal (`/admin/`),
-backed by a managed Azure Functions API (`/api`) and Azure Table Storage.
+backed by a separately linked Azure Functions API (`/api`) and Azure Table Storage.
 
 ```
 app/                       static site (deployed as app_location)
@@ -38,10 +38,10 @@ Click **Admin Login** (top-right of the booking form) or open `/admin/`.
 | Username | `admin` |
 | Password | `Admin@123` |
 
-When running on `localhost`, the login screen shows these defaults and a **Use default credentials** button.
+When running in explicit local UI test mode, the login screen shows development defaults.
 They are hidden on the deployed site.
 
-**Change them before going live:** set these app settings (Static Web App → Environment variables), or edit
+**Change them before going live:** set these app settings on the linked **Function App**, or edit
 `api/local.settings.json` for local runs:
 
 | Setting | Purpose |
@@ -58,21 +58,80 @@ Sessions last 8 hours and are stored in an HttpOnly, SameSite=Strict cookie (Sec
 ```bash
 npx serve app        # or: cd app && python -m http.server 8080
 ```
-Open the URL shown → **Admin Login** → **Use default credentials** → **Log in**.
+Open the URL shown with `?storage=local` → **Admin Login** → **Use default credentials** → **Log in**.
+Add `?storage=local` to the admin page URL too. Local UI mode is only available on localhost/loopback.
 Data is kept in browser storage; use **Load sample data** in the yellow bar to fill the calendar.
 
 ### Option B – full stack (same as Azure)
-Prerequisites: Node.js 20, then:
+Prerequisites: supported Node.js 22+ runtime, Azure CLI, Functions Core Tools v4 and SWA CLI, then:
 ```bash
 npm install -g @azure/static-web-apps-cli azure-functions-core-tools@4
 cd api && npm install && cd ..
 swa start
 ```
 Open http://localhost:4280 → **Admin Login** → log in with the default credentials.
-Data is saved to `api/.data/db.json`. To use Azurite or a real storage account, set
-`STORAGE_CONNECTION_STRING` in `api/local.settings.json` (Azurite: `UseDevelopmentStorage=true`).
+Configure `STORAGE_TABLE_ENDPOINT` in the ignored `api/local.settings.json` as
+`https://sellerdevelopment.table.core.windows.net/`. A nonsecret template is in
+`api/local.settings.example.json`. The local API uses `DefaultAzureCredential` and your Azure CLI
+sign-in in the DreadOps tenant. The signed-in developer needs **Storage Table Data Contributor**
+on the account; Owner/Contributor management roles alone do not grant Table data access.
 
-## Deploy to Azure Static Web Apps
+The deployed API uses `ManagedIdentityCredential` only. For a user-assigned identity, set
+`STORAGE_MANAGED_IDENTITY_CLIENT_ID`; otherwise use the Function App's system-assigned identity.
+Grant that identity Storage Table Data Contributor on the account.
+
+Endpoint configuration takes precedence over legacy `STORAGE_CONNECTION_STRING`. No key is needed
+for this setup. The Functions host's `AzureWebJobsStorage` is separate runtime storage and must be
+configured for the selected hosting plan; it is not the application's Table Storage setting.
+
+If neither application storage setting exists, local-only API runs can use `api/.data/db.json`.
+Cloud hosts refuse this file fallback. The deployed frontend refuses browser fallback and requires
+healthy Table storage. On localhost, browser storage is available only with `?storage=local`.
+`GET /api/health` actually checks storage access; failures return 503 without exposing storage details.
+Do not use the plain static server at port 3000 for Azure-backed submission: use the full-stack
+same-origin SWA endpoint at port 4280 instead.
+If combined `swa start` stalls, use the VS Code **Run booking Functions API** task first, then
+**Run Azure-backed booking application**. These separate tasks serve the Azure-backed frontend at
+`http://localhost:4281/` and API at port 7071. An `AzureWebJobsStorage` host-health warning is separate
+from application Table access and must be resolved before production deployment.
+
+## Linked keyless backend deployment (recommended)
+
+Existing target: **SellerDevelopment**, Standard Static Web App in **PersonalRG**, Primary Subscription
+`2a77b3d9-39da-4b42-8219-c6fd9b8a6165`. Storage account: **sellerdevelopment**, Southeast Asia.
+
+1. Provision a separately hosted Function App with managed identity after region, hosting costs,
+   runtime-storage configuration and quota are approved. Managed SWA functions do not support managed identity.
+2. Deploy the `api/` directory separately; retain the default `/api` route prefix.
+3. Configure `STORAGE_TABLE_ENDPOINT`, strong private admin settings and runtime storage on the Function App.
+4. Grant its identity Storage Table Data Contributor on sellerdevelopment. Verify table creation/read/write permissions.
+5. Link the Function App through SellerDevelopment → APIs → Production. Retain the linking authentication
+   protections; direct Function App access must not trust caller-supplied SWA identity headers.
+6. Keep the frontend workflow's `api_location` **empty** for a linked backend. Deploy frontend and backend separately.
+7. Verify the custom domain's `/api/health`, login and a temporary booking before cutover.
+
+No hosting resources or storage-account keys are embedded in frontend files. An exposed account key must
+still be rotated even when switching to managed identity.
+
+## Preserve and migrate existing browser responses
+
+- Data belongs to each browser profile and origin. Export complete JSON from the origin where responses
+  were submitted (for example localhost:3000 or the deployed domain), not CSV. CSV omits answers and audit fields.
+- Snapshot format: an object containing `bookings` from localStorage `sdrf_bookings_v2` and `blocks`
+  from `sdrf_blocks_v1`. Store snapshots under ignored `api/.migration/`; never commit personal response data.
+- Pause source and destination writes during cutover. Do not clear localStorage or source JSON files.
+- From `api/`, use `npm run migrate -- .migration/snapshot.json` for a **dry-run** with
+  `STORAGE_TABLE_ENDPOINT` available in the terminal environment. The script does not load local.settings.json.
+- Only after reviewing dry-run results, append `--apply`. The import preserves complete records, IDs,
+  timestamps, statuses and notes. It rejects invalid/oversized records, source duplicates, scheduling conflicts
+  and differing destination IDs. Identical destination records are skipped; new records use create-only inserts.
+- Repeating the import is idempotent. A partial failure reports counts; rerun dry-run before resuming.
+  Originals remain unchanged. Verify complete destination records and counts before enabling new writes.
+- Rollback does not delete Azure records. Reconcile any post-cutover writes before switching destinations.
+
+## Legacy managed-functions deployment (connection-string compatibility only)
+
+The following is an alternative to the recommended linked keyless setup, not its deployment instructions.
 1. Create a Storage Account (for Table Storage).
 2. Create the Static Web App: App location `app`, Api location `api`, Output location empty.
 3. Static Web App → **Environment variables**: add `STORAGE_CONNECTION_STRING`, `ADMIN_USERNAME`,
@@ -91,5 +150,5 @@ Data is saved to `api/.data/db.json`. To use Azurite or a real storage account, 
 - Admin endpoints (`GET /api/bookings`, `/api/bookings/{id}`, `/api/blocks*`) check the signed session cookie
   inside each function; requests without a valid session get 401.
 - Public endpoints: `POST /api/bookings`, `GET /api/availability` (no personal data), `POST /api/auth/login`.
-- Quick UI test mode (no API) checks the default credentials in the browser. That is for local testing only;
-  always deploy with the `api` folder so logins are verified on the server.
+- Explicit quick UI test mode checks development credentials in the browser on localhost only.
+  Deployed logins require a healthy linked API; API outages never silently store responses locally.

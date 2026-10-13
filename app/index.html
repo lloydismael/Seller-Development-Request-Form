@@ -10,16 +10,34 @@
 <body>
   <header class="banner">
     <a class="admin-btn" href="/admin/">Admin Login</a>
-    <div class="banner-inner"><h1 id="formTitle">Seller Development Request Form</h1></div></header>
+    <div class="banner-inner">
+      <span class="eyebrow">SELLER DEVELOPMENT</span>
+      <h1 id="formTitle">Seller Development Request Form</h1>
+      <p>A little planning. A lot of possibility.</p>
+    </div>
+  </header>
 
   <main class="paper">
     <form id="bookingForm" novalidate>
-      <div id="questions"></div>
-      <div class="actions"><button type="submit" id="submitBtn" class="btn primary">Submit</button></div>
+      <div class="progress-meta"><span id="stepLabel">Let’s get started</span><span id="progressLabel">0% complete</span></div>
+      <progress id="formProgress" max="100" value="0" aria-label="Request completion"></progress>
+      <div class="card-stack">
+        <div id="questions"></div>
+        <div id="formError" class="err form-error" role="alert" hidden></div>
+        <div class="actions">
+          <button type="button" id="backBtn" class="btn secondary"><span aria-hidden="true">←</span> Back</button>
+          <span id="navigationHint" class="navigation-hint">Your answers stay here as you go back.</span>
+          <button type="button" id="nextBtn" class="btn primary">Continue <span aria-hidden="true">→</span></button>
+          <button type="submit" id="submitBtn" class="btn primary" hidden>Submit request <span aria-hidden="true">→</span></button>
+        </div>
+      </div>
+      <p class="form-footnote">One question at a time. Review everything before you submit.</p>
+      <div id="stepAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
     </form>
 
     <section id="thanks" hidden>
-      <h2>Your booking request has been submitted.</h2>
+      <div class="success-mark" aria-hidden="true">✓</div>
+      <h2 tabindex="-1">Your booking request has been submitted.</h2>
       <p>Status: <strong>Pending approval</strong>. Here is a summary of your request:</p>
       <table class="summary"><tbody id="summary"></tbody></table>
       <div class="actions"><button type="button" id="againBtn" class="btn primary">Submit another response</button></div>

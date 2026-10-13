@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Azure-backed booking application",
+			"type": "shell",
+			"command": "swa",
+			"args": [
+				"start",
+				"app",
+				"--api-devserver-url",
+				"http://localhost:7071",
+				"--swa-config-location",
+				"app",
+				"--port",
+				"4281"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run booking Functions API",
+			"type": "shell",
+			"command": "func",
+			"args": ["start", "--port", "7071"],
+			"options": { "cwd": "${workspaceFolder}/api" },
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

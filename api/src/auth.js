@@ -32,6 +32,7 @@ function issueToken(user) {
 function session(req) {
   const m = (req.headers.get("cookie") || "").match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));
   if (!m) return null;
+  if (m[1].split(".").length !== 2) return null;
   const [p, s] = m[1].split(".");
   if (!p || !s || !eq(sign(p), s)) return null;
   try { const d = JSON.parse(Buffer.from(p, "base64url").toString("utf8")); return d.exp > Date.now() / 1000 ? d : null; }
@@ -49,7 +50,8 @@ function adminUser(req) {
   const s = session(req);
   if (s) return s.u;
   const p = swaPrincipal(req);
-  return p && (p.userRoles || []).includes("admin") ? p.userDetails : null;
+  return p && Array.isArray(p.userRoles) && p.userRoles.includes("admin") &&
+    typeof p.userDetails === "string" ? p.userDetails : null;
 }
 const isAdmin = req => !!adminUser(req);
 

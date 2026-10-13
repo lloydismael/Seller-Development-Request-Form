@@ -100,7 +100,11 @@
   }
 
   // ---------- shell ----------
-  try { mode = await S.mode(); }
+  let user;
+  try {
+    mode = await S.mode();
+    user = (await S.me()).user;
+  }
   catch (err) {
     // Port 3000 is the static preview, not an API proxy. Use the local
     // full-stack endpoint so authentication cookies remain same-origin.
@@ -116,13 +120,17 @@
     $("#loginBtn").textContent = "Retry connection";
     return;
   }
-  let user = (await S.me()).user;
   if (!user) user = await showLogin();
   $("#app").hidden = false;
   $("#userName").textContent = user;
   $("#modeBadge").textContent = mode === "api" ? "Live API" : "Local storage";
   $("#modeBadge").classList.toggle("local", mode !== "api");
-  $("#logoutBtn").onclick = async () => { await S.logout(); location.reload(); };
+  $("#logoutBtn").onclick = async () => {
+    const btn = $("#logoutBtn"); btn.disabled = true;
+    try { await S.logout(); location.reload(); }
+    catch { toast("Logout failed. Your session may still be active. Please retry."); }
+    finally { btn.disabled = false; }
+  };
   if (mode === "local") {
     $("#devBar").hidden = false;
     $("#seedBtn").onclick = () => { if (confirm("Replace local data with sample bookings?")) { seedSample(); reload(); } };

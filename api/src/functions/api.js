@@ -4,7 +4,7 @@ const store = require("../store");
 const { findConflicts, conflictMessage, isActive, inBlock } = require("../rules");
 const { isAdmin, adminUser, checkCredentials, issueToken, sessionCookie, TTL } = require("../auth");
 
-const json = (status, body) => ({ status, jsonBody: body });
+const json = (status, body) => ({ status, jsonBody: body, headers: { "Cache-Control": "no-store" } });
 const DENIED = json(401, { error: "Administrator sign-in required." });
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ["Pending", "Approved", "Completed", "Rejected", "Cancelled"];
@@ -128,13 +128,13 @@ app.http("authLogin", {
       await new Promise(r => setTimeout(r, 600)); // slow down guessing
       return json(401, { error: "Invalid username or password." });
     }
-    return { status: 200, jsonBody: { user: u }, cookies: [sessionCookie(req, issueToken(u), TTL)] };
+    return { ...json(200, { user: u }), cookies: [sessionCookie(req, issueToken(u), TTL)] };
   }
 });
 
 app.http("authLogout", {
   methods: ["POST"], authLevel: "anonymous", route: "auth/logout",
-  handler: async (req) => ({ status: 200, jsonBody: { ok: true }, cookies: [sessionCookie(req, "", 0)] })
+  handler: async (req) => ({ ...json(200, { ok: true }), cookies: [sessionCookie(req, "", 0)] })
 });
 
 app.http("authMe", {

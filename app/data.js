@@ -132,11 +132,11 @@
       throw fail(401, "Invalid username or password.");
     },
     async me() {
-      if (await isApi()) { try { return await api("GET", "/api/auth/me"); } catch { return { user: null }; } }
+      if (await isApi()) return api("GET", "/api/auth/me");
       return { user: sessionStorage.getItem(SS_ADMIN) };
     },
     async logout() {
-      if (await isApi()) { try { await api("POST", "/api/auth/logout"); } catch { /* ignore */ } }
+      if (await isApi()) await api("POST", "/api/auth/logout");
       sessionStorage.removeItem(SS_ADMIN);
     },
     // local-mode helpers (sample data / reset)

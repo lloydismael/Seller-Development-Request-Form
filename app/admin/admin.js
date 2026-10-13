@@ -102,6 +102,13 @@
   // ---------- shell ----------
   try { mode = await S.mode(); }
   catch (err) {
+    // Port 3000 is the static preview, not an API proxy. Use the local
+    // full-stack endpoint so authentication cookies remain same-origin.
+    if (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) && location.port === "3000") {
+      const live = new URL(location.href); live.port = "4281";
+      location.replace(live.href);
+      return;
+    }
     $("#gate").hidden = false;
     $("#loginErr").textContent = err.message;
     $("#loginErr").hidden = false;

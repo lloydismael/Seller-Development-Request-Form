@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceGroupName": { "value": "rg-booking-authcheck-8941" },
+    "location": { "value": "southeastasia" },
+    "createdAt": { "value": "2026-10-14T02:16:41.9955247+08:00" },
+    "deployedBy": { "value": "Lloyd" },
+    "sessionId": { "value": "89416f71-32ae-4d9a-9cb8-ac7fea2b45cd" }
+  }
+}

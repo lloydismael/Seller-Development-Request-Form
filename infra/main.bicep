@@ -20,6 +20,8 @@ param applicationStorageAccountName string
 param staticWebAppName string
 param frontendOrigins array
 param adminUsername string = 'admin'
+// Bootstrap creates a protected empty host; configure identity-dependent roles/settings afterward.
+param configureBackend bool = true
 
 // Required verified SWA provider binding identifier; its derivation must have authoritative evidence.
 @minLength(1)
@@ -91,7 +93,7 @@ module api './modules/function-app.bicep' = {
   }
 }
 
-module roles './modules/role-assignments.bicep' = {
+module roles './modules/role-assignments.bicep' = if (configureBackend) {
   name: 'booking-storage-roles'
   scope: rg
   params: {
@@ -112,7 +114,7 @@ module authentication './modules/backend-auth.bicep' = {
 }
 
 // Secure inputs never enter AVM's ordinary object parameters and are never output.
-module settings './modules/function-settings.bicep' = {
+module settings './modules/function-settings.bicep' = if (configureBackend) {
   name: 'booking-function-settings'
   scope: rg
   params: {

@@ -1,0 +1,8 @@
+{
+  "name": "swa-auth-validation-probe",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/probe.js",
+  "engines": { "node": ">=22" },
+  "dependencies": { "@azure/functions": "4.16.5" }
+}

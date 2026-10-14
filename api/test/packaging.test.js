@@ -27,7 +27,9 @@ test("build copies canonical bytes, refreshes generated assets, and fails withou
   for (const name of files) assert.deepEqual(fs.readFileSync(path.join(dir,"api/src/form-assets",name)),fs.readFileSync(path.join(root,"app",name)));
   const changed = fs.readFileSync(path.join(dir,"app/form-config.js"),"utf8") + "\n// isolated build refresh\n";
   fs.writeFileSync(path.join(dir,"app/form-config.js"),changed);
-  assert.equal(node([script],dir).status,0);
+  const build = manifest.scripts.build.slice(9, -1);
+  const built = node(["-e",build],path.join(dir,"api"));
+  assert.equal(built.status,0,built.stderr);
   assert.equal(fs.readFileSync(path.join(dir,"api/src/form-assets/form-config.js"),"utf8"),changed);
   fs.rmSync(path.join(dir,"app/form-schema.js"));
   assert.notEqual(node([script],dir).status,0);

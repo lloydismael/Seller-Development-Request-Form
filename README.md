@@ -276,6 +276,26 @@ The active frontend workflow is
   workflow keeps `api_location` empty; there is no production API pipeline.
 - The legacy ambitious-sky workflow remains manual-only.
 
+### Linked API release smoke check
+
+A frontend release does not install new API routes. Build and publish the verified source-only
+API package separately as described in `infra/PACKAGING.md`, then run:
+
+```powershell
+node api\scripts\smoke-history.js https://sellerdevelopmentrf.clouditechsolution.com
+```
+
+This read-only check verifies new/returning anonymous history, production cookie flags,
+unknown-detail privacy and Table-backed health. It creates no bookings and prints no cookie
+values. A failure should block release acceptance; do not clear browser cookies or stored requests.
+Run `node --test api\test\smoke-history.test.js` for isolated smoke-tool regression tests.
+
+Automated backend publication still requires an approved Azure deployment identity and
+GitHub authorization configuration. No repository environments or variables are currently
+configured, and the existing SWA token is not a Function App deployment credential. Do not
+reuse it, create credentials or grant deployment roles without approval. Keep `api_location`
+empty for the separately linked backend.
+
 ## Preserve and migrate existing browser responses
 
 - Data belongs to each browser profile and origin. Export complete JSON from the origin where responses

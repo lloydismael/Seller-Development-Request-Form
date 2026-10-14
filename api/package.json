@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Seller Development booking API (Azure Functions linked to Static Web Apps)",
   "main": "src/functions/*.js",
-  "scripts": { "build": "node -e \"const fs=require('node:fs'); if(fs.existsSync('scripts/build-form-assets.js')) require('./scripts/build-form-assets'); else { require('./src/form-assets/form-config'); require('./src/form-assets/form-schema'); }\"",  "start": "func start", "test": "node --test test/*.test.js", "migrate": "node scripts/migrate-storage.js" },
+  "scripts": { "build": "node -e \"const fs=require('node:fs'); if(fs.existsSync('scripts/build-form-assets.js')) require('./scripts/build-form-assets').build(); else { require('./src/form-assets/form-config'); require('./src/form-assets/form-schema'); }\"",  "start": "func start", "test": "node --test test/*.test.js", "migrate": "node scripts/migrate-storage.js" },
   "engines": { "node": ">=22" },
   "dependencies": {
     "@azure/data-tables": "^13.2.2",

@@ -11,6 +11,7 @@
   const REQUIRED = ["requestor", "division", "category", "trainingDate", "facilitator", "time", "venue"];
   const FIELDS = [...REQUIRED, "director", "topic", "participants", "recommendations"];
   const TYPES = ["text", "textarea", "email", "number", "date", "choice", "multi"];
+  const GLASS_DEFAULTS = Object.freeze({ glassEnabled:false, glassTransparency:20, glassBlur:12 });
   const unsafe = new Set(["__proto__", "prototype", "constructor"]);
   const fail = message => { throw Object.assign(new Error(message), { statusCode:400, expose:true }); };
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -64,11 +65,15 @@
       if (s.description !== undefined) v.description = text(s.description, 1000, true);
       return v;
     });
-    keys(out.theme, ["primary", "background", "density", "width", "cardStyle"]);
+    keys(out.theme, ["primary", "background", "density", "width", "cardStyle", ...Object.keys(GLASS_DEFAULTS)]);
     if (![out.theme.primary, out.theme.background].every(v => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) ||
         !["compact", "comfortable"].includes(out.theme.density) || !["narrow", "standard", "wide"].includes(out.theme.width) ||
         !["outlined", "elevated", "flat"].includes(out.theme.cardStyle)) fail("Invalid theme tokens.");
-    out.theme = { ...out.theme };
+    out.theme = { ...GLASS_DEFAULTS, ...out.theme };
+    if (typeof out.theme.glassEnabled !== "boolean") fail("Glass enabled must be boolean.");
+    for (const [key, max] of [["glassTransparency", 40], ["glassBlur", 20]]) {
+      if (typeof out.theme[key] !== "number" || !Number.isFinite(out.theme[key]) || out.theme[key] < 0 || out.theme[key] > max) fail("Invalid glass setting: " + key);
+    }
     for (const key of ids) {
       id(key);
       const q = input.questions[key];
@@ -192,5 +197,5 @@
     if (REQUIRED.some(f => !fields[f])) fail("Missing essential booking answers.");
     return size({ ...fields, answerValues, answers, answerSnapshot });
   }
-  return { MAX_BYTES, REQUIRED, FIELDS, TYPES, validate, submission, validDate, validTime, size };
+  return { MAX_BYTES, REQUIRED, FIELDS, TYPES, GLASS_DEFAULTS, validate, submission, validDate, validTime, size };
 });

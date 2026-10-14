@@ -94,7 +94,27 @@ both at login and within the portal. Published form accent/background choices re
 unchanged; light mode respects those settings, while dark mode uses accessible viewer
 colors without saving changes to the form. The teal bootstrap default applies only to
 configurations without an explicit theme, not existing saved drafts or published forms.
+Public action buttons use compact padding while retaining 44px minimum touch heights;
+option tiles and full-width mobile submission remain unchanged.
 No external fonts, UI framework, or additional runtime dependency is needed.
+
+### Optional frosted glass
+
+In **Admin → Settings → Form settings → Subtle frosted glass**, enable the
+restrained glass treatment for the public header, progress tracker, question cards,
+and My Request dialog. Existing and new forms default to **disabled**, with a preset
+of **20% transparency and 12px frost blur**. Transparency accepts 0–40%; blur accepts
+0–20px. Readability caps effective transparency at 20% in light mode and 10% in dark
+mode, regardless of the configured background. Text, inputs, actions and status
+feedback remain opaque. **Reset and disable glass** restores the preset and disables
+it without changing other appearance settings.
+
+Use **Save draft → Preview → Publish** to apply changes. Unsupported browsers,
+reduced-transparency preferences and forced-colors mode retain solid surfaces;
+Safari uses the prefixed backdrop-filter enhancement. Existing reduced-motion and
+keyboard-focus behavior is preserved. Release the frontend and packaged API shared
+schema together before publishing glass-enabled configurations; an older API schema
+will reject the new appearance fields.
 
 ## Admin features
 | Tab | What it does |

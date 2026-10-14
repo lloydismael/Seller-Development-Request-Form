@@ -21,6 +21,42 @@ test("shared light and dark semantic text colors meet contrast targets", () => {
   }
 });
 
+test("glass text maintains contrast across themes, allowed settings and extreme backdrops", () => {
+  const composite = (front, back, alpha) => front.map((c, i) => c * alpha + back[i] * (1 - alpha));
+  const lum = rgb => {
+    const c = rgb.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  };
+  const rgb = hex => hex.match(/../g).map(v => parseInt(v, 16));
+  for (const block of tokens.split(":root[data-color-mode")) {
+    const values = Object.fromEntries([...block.matchAll(/--ui-([a-z-]+):#([0-9a-f]{6});/g)].map(m => [m[1], m[2]]));
+    const surface = block.match(/--ui-glass-rgb:([\d ]+);/)[1].trim().split(/\s+/).map(Number);
+    const floor = Number(block.match(/--ui-glass-min-alpha:([.\d]+);/)[1]);
+    for (const transparency of [0, 20, 40]) for (const backing of [[0, 0, 0], [255, 255, 255]]) for (const scrim of [0, .55]) for (const highlight of [0, .12]) {
+      const background = composite(surface, composite([0, 0, 0], backing, scrim), Math.max(1 - transparency / 100, floor));
+      const rendered = composite(surface, background, highlight);
+      for (const foreground of ["text", "muted", "danger"]) {
+        const a = lum(rgb(values[foreground])), b = lum(rendered);
+        const contrast = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+        assert.ok(contrast >= 4.5, `${foreground}, transparency ${transparency}, scrim ${scrim}: ${contrast}`);
+      }
+    }
+  }
+});
+
+test("glass enhancement is opt-in and scoped with Safari and accessibility fallbacks", () => {
+  assert.match(styles, /@supports \(\(backdrop-filter:blur\(1px\)\) or \(-webkit-backdrop-filter:blur\(1px\)\)\)/);
+  assert.match(styles, /:root\[data-glass="enabled"\] :is\(\.hero,\.progress-wrap,\.q-card,\.request-history\)/);
+  assert.match(styles, /max\(var\(--glass-alpha\),var\(--ui-glass-min-alpha\)\)/);
+  assert.match(styles, /-webkit-backdrop-filter:blur\(var\(--glass-blur\)\);\s*backdrop-filter:blur\(var\(--glass-blur\)\)/);
+  assert.match(styles, /:root\[data-glass="enabled"\] :is\(\.err,\.history-item\) \{ background:var\(--card\); \}/);
+  const fallback = styles.slice(styles.indexOf("@media (prefers-reduced-transparency"), styles.indexOf("@media (prefers-reduced-motion", styles.indexOf("@media (prefers-reduced-transparency")));
+  assert.match(fallback, /\(forced-colors:active\)/);
+  assert.match(fallback, /background:var\(--card\)/);
+  assert.match(fallback, /-webkit-backdrop-filter:none;\s*backdrop-filter:none;\s*filter:none;/);
+  assert.doesNotMatch(styles, /:root\[data-glass="enabled"\][^{]*\{[^}]*opacity:/);
+});
+
 test("public redesign keeps hidden legends and accessible progress while preserving motion preferences", () => {
   assert.match(html, /id="progressText" hidden/);
   assert.doesNotMatch(html, /class="required-note"/);
@@ -55,6 +91,16 @@ test("My Request is at the top left while admin and theme actions remain right a
   assert.match(styles, /\.hero-actions \{ position:absolute; top:16px; left:20px; right:20px; display:flex;/);
   assert.match(styles, /\.hero-actions #historyBtn \{ margin-right:auto; \}/);
   assert.match(styles, /\.hero-actions \{ left:12px; justify-content:flex-end; flex-wrap:wrap; \}/);
+});
+
+test("action buttons use slightly smaller padding while retaining touch targets and mobile submit width", () => {
+  assert.match(styles, /\.btn \{ display:inline-block; padding:8px 22px;/);
+  assert.match(styles, /\.btn\.lg \{ padding:12px 30px; font-size:16px; \}/);
+  assert.match(styles, /\.admin-btn \{[^}]*padding:6px 14px;/);
+  assert.match(styles, /\.hero-actions \.admin-btn \{ padding:6px 10px; \}/);
+  assert.match(styles, /\.btn \{ min-height:44px;/);
+  assert.match(styles, /\.hero-actions \.admin-btn \{ position:static; min-height:44px; \}/);
+  assert.match(styles, /\.submit-bar \.btn \{ width:100%; \}/);
 });
 
 test("initial name section is centered in the available viewport without a blank submit bar", () => {

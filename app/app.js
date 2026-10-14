@@ -459,6 +459,9 @@
     const rgb = theme.primary.slice(1).match(/../g).map(c => parseInt(c,16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
     root.style.setProperty("--primary-ink", .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2] > .179 ? "#111827" : "#ffffff");
     root.dataset.density = theme.density; root.dataset.width = theme.width; root.dataset.cardStyle = theme.cardStyle;
+    root.dataset.glass = theme.glassEnabled ? "enabled" : "disabled";
+    root.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
+    root.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
   }
   async function loadForm() {
     if (loading || submitting) return;

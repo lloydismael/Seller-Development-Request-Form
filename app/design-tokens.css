@@ -8,6 +8,7 @@
   --ui-danger-bg:#fff1f2; --ui-danger:#9f1239;
   --ui-info-bg:#e0f2fe; --ui-info:#075985;
   --ui-shadow:0 2px 4px #0f172a04,0 8px 24px #0f172a08;
+  --ui-glass-rgb:255 255 255; --ui-glass-min-alpha:.8;
   --ui-overlay:#0f172a99; --ui-radius:12px;
   --ui-space-1:4px; --ui-space-2:8px; --ui-space-3:12px; --ui-space-4:16px; --ui-space-6:24px; --ui-space-8:32px;
 }
@@ -21,5 +22,6 @@
   --ui-danger-bg:#421c2a; --ui-danger:#fda4af;
   --ui-info-bg:#173449; --ui-info:#bae6fd;
   --ui-shadow:0 2px 4px #0001,0 8px 24px #0002;
+  --ui-glass-rgb:30 41 59; --ui-glass-min-alpha:.9;
   --ui-overlay:#020617b3;
 }

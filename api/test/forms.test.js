@@ -20,6 +20,33 @@ test("canonical defaults/schema expose matching browser and CommonJS exports", (
   assert.equal(config().questions.participants.type, "number"); assert.equal(config().questions.recommendations.type, "textarea");
 });
 
+test("glass settings normalize legacy themes without mutation and reject invalid values", () => {
+  const legacy = clone(defaults), before = clone(legacy);
+  const normalized = schema.validate(legacy);
+  assert.deepEqual(legacy, before);
+  for (const [key, value] of Object.entries(schema.GLASS_DEFAULTS)) assert.equal(normalized.theme[key], value);
+  assert.ok(Object.isFrozen(schema.GLASS_DEFAULTS));
+  delete legacy.theme;
+  assert.equal(schema.validate(legacy).theme.glassEnabled, false);
+  for (const transparency of [0, 20, 40]) for (const blur of [0, 12, 20]) {
+    const c = config(); Object.assign(c.theme, { glassEnabled:true, glassTransparency:transparency, glassBlur:blur });
+    assert.deepEqual(schema.validate(c).theme, c.theme);
+  }
+  for (const [key, invalid] of [
+    ["glassEnabled", [0, 1, "true", null, undefined]],
+    ["glassTransparency", [-1, 41, "20", null, undefined, NaN, Infinity]],
+    ["glassBlur", [-1, 21, "12", null, undefined, NaN, Infinity]],
+    ["glassUnknown", [true]]
+  ]) for (const value of invalid) {
+    const c = config(); c.theme[key] = value;
+    assert.throws(() => schema.validate(c), { statusCode:400 }, `${key}: ${value}`);
+  }
+  const browser = { window:{} };
+  vm.runInNewContext(fs.readFileSync(require.resolve("../../app/form-schema"), "utf8"), browser);
+  const c = config(); Object.assign(c.theme, { glassEnabled:true, glassTransparency:40, glassBlur:20 });
+  assert.deepEqual(clone(browser.window.FormSchema.validate(c)), schema.validate(c));
+});
+
 test("schema rejects unsafe keys, bounds, HTML/CSS, cycles, unreachable nodes and skipped essentials", () => {
   const changes = [
     c => { c.questions.name.next = "missing"; }, c => { c.questions.time.next = "name"; },
@@ -86,11 +113,16 @@ test("create-only seed races, CAS draft conflicts, atomic publish and immutable 
   const a = harness(), seeded = await Promise.all([a.forms.published(), a.forms.published()]);
   assert.equal(seeded[0].version, seeded[1].version);
   const initial = await a.forms.draft(), changed = clone(initial.config); changed.title = "Changed form";
+  Object.assign(changed.theme, { glassEnabled:true, glassTransparency:30, glassBlur:16 });
   const saves = await Promise.allSettled([a.forms.saveDraft({ config:changed, revision:initial.revision }), a.forms.saveDraft({ config:changed, revision:initial.revision })]);
   assert.equal(saves.filter(x => x.status === "fulfilled").length, 1); assert.equal(saves.find(x => x.status === "rejected").reason.statusCode, 409);
   assert.equal((await a.forms.published()).config.title, defaults.title);
   await assert.rejects(a.forms.publish({ revision:initial.revision }), { statusCode:409 });
   const saved = await a.forms.draft(), published = await a.forms.publish({ revision:saved.revision });
+  assert.deepEqual(saved.config.theme, changed.theme);
+  assert.deepEqual(published.config.theme, changed.theme);
+  assert.deepEqual((await a.forms.published()).config.theme, changed.theme);
+  assert.equal((await a.store.settings.get("form-version-" + seeded[0].version)).config.theme.glassEnabled, false);
   assert.equal(published.config.title, "Changed form"); assert.notEqual(published.version, seeded[0].version);
   assert.equal((await a.store.settings.get("form-version-" + seeded[0].version)).config.title, defaults.title);
   await assert.rejects(a.forms.booking({ formVersion:seeded[0].version, answerValues:values() }), { statusCode:409 });

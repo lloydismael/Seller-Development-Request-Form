@@ -234,6 +234,11 @@
         <p class="muted small">Every route must include requestor, division, category, date, facilitator, time and venue. Invalid routes cannot be saved or published.</p>
         <h3>Safe appearance options</h3><div class="theme-grid">${["primary", "background"].map(k => `<label>${k === "primary" ? "Accent color" : "Background color"}<input type="color" data-theme="${k}" value="${esc(cfg.theme[k])}"></label>`).join("")}
           ${[["density", ["compact", "comfortable"]], ["width", ["narrow", "standard", "wide"]], ["cardStyle", ["outlined", "elevated", "flat"]]].map(([key, values]) => `<label>${esc(key)}<select data-theme="${key}">${select(values, cfg.theme[key])}</select></label>`).join("")}</div>
+        <h3>Subtle frosted glass</h3>
+        <label class="check-label"><input type="checkbox" data-theme="glassEnabled" ${cfg.theme.glassEnabled ? "checked" : ""}>Enable glass surfaces</label>
+        <p class="muted small" id="glassHelp">Soft frosted header, progress tracker, question cards and My Request dialog. Text, inputs and actions stay opaque. Readability limits effective transparency to 20% in light mode and 10% in dark mode. Unsupported browsers and reduced-transparency preferences use solid surfaces.</p>
+        <div class="theme-grid">${[["glassTransparency", "Transparency (%)", 40], ["glassBlur", "Frost blur (px)", 20]].map(([key, title, max]) => `<label>${title}<input type="number" data-theme="${key}" value="${esc(cfg.theme[key] ?? schema.GLASS_DEFAULTS[key])}" min="0" max="${max}" step="1" aria-describedby="glassHelp" ${cfg.theme.glassEnabled ? "" : "disabled"}></label>`).join("")}</div>
+        <button type="button" class="btn" id="resetGlass">Reset and disable glass</button>
       </section>
       <section class="panel"><h3>Sections</h3><div class="section-list">${cfg.sections.map(s => `<div class="section-editor"><label>Section title<input data-section-title="${esc(s.id)}" value="${esc(s.title)}" maxlength="200"></label><label>Description<textarea data-section-description="${esc(s.id)}" maxlength="1000">${esc(s.description)}</textarea></label><button type="button" class="btn danger" data-remove-section="${esc(s.id)}">Delete section</button></div>`).join("") || '<p class="muted">No sections yet.</p>'}</div><button type="button" class="btn" id="addSection">Add section</button></section>
       <section class="panel" id="previewPanel" ${previewOpen ? "" : "hidden"}><h3>Saved draft preview</h3><p class="muted">Authenticated public renderer; submissions are disabled. Save again to preview further edits.</p>${previewOpen ? '<iframe class="draft-preview" title="Saved booking form draft" src="/?preview=draft"></iframe>' : ""}</section>`;
@@ -311,7 +316,21 @@
     };
     find("#formTitle").oninput = e => { cfg.title = e.target.value; changed(); if (choicePending) pendingChoices(); };
     find("#formStart").onchange = e => { cfg.start = e.target.value; changed(); if (choicePending) pendingChoices(); };
-    view.querySelectorAll("[data-theme]").forEach(input => { input.oninput = () => { cfg.theme[input.dataset.theme] = input.value; changed(); if (choicePending) pendingChoices(); }; });
+    const syncGlass = () => {
+      view.querySelectorAll('[data-theme="glassTransparency"],[data-theme="glassBlur"]').forEach(input => { input.disabled = !cfg.theme.glassEnabled; });
+    };
+    view.querySelectorAll("[data-theme]").forEach(input => { input.oninput = () => {
+      cfg.theme[input.dataset.theme] = input.type === "checkbox" ? input.checked : input.type === "number" ? input.valueAsNumber : input.value;
+      syncGlass(); changed(); if (choicePending) pendingChoices();
+    }; });
+    find("#resetGlass").onclick = () => {
+      Object.assign(cfg.theme, schema.GLASS_DEFAULTS);
+      view.querySelectorAll('[data-theme^="glass"]').forEach(input => {
+        if (input.type === "checkbox") input.checked = cfg.theme[input.dataset.theme];
+        else input.value = cfg.theme[input.dataset.theme];
+      });
+      syncGlass(); changed(); if (choicePending) pendingChoices();
+    };
     view.querySelectorAll("[data-section-title],[data-section-description]").forEach(input => { input.oninput = () => {
       const id = input.dataset.sectionTitle || input.dataset.sectionDescription, section = cfg.sections.find(s => s.id === id);
       section[input.dataset.sectionTitle ? "title" : "description"] = input.value; changed(); if (choicePending) pendingChoices();

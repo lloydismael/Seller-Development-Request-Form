@@ -36,6 +36,24 @@ function renderer(config) {
   return context;
 }
 
+test("renderer applies and clears glass through validated theme tokens", () => {
+  const properties = {}, root = { dataset:{}, style:{ setProperty:(key, value) => { properties[key] = value; } } };
+  const context = { document:{ documentElement:root } };
+  vm.runInNewContext(source.slice(source.indexOf("  function applyTheme("), source.indexOf("  async function loadForm(")), context);
+  const theme = schema.validate(defaults).theme;
+  context.applyTheme(theme);
+  assert.equal(root.dataset.glass, "disabled");
+  assert.equal(properties["--glass-alpha"], "0.8");
+  assert.equal(properties["--glass-blur"], "12px");
+  Object.assign(theme, { glassEnabled:true, glassTransparency:40, glassBlur:20 });
+  context.applyTheme(theme);
+  assert.equal(root.dataset.glass, "enabled");
+  assert.equal(properties["--glass-alpha"], "0.6");
+  assert.equal(properties["--glass-blur"], "20px");
+  theme.glassEnabled = false; context.applyTheme(theme);
+  assert.equal(root.dataset.glass, "disabled");
+});
+
 function config() {
   const c = schema.validate(defaults);
   c.questions.recommendations.next = "score";

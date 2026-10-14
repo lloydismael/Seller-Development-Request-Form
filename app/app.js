@@ -6,7 +6,7 @@
   const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let submitting = false, activeQuestionId;
+  let submitting = false, activeQuestionId, requestorComplete = false;
   let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0;
   const choiceObj = c => typeof c === "string" ? { label:c } : c;
   const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
@@ -47,7 +47,7 @@
     while (id && Q[id] && !seen.has(id)) {
       seen.add(id); path.push(id);
       const q = Q[id], opts = (q.choices || []).map(choiceObj);
-      if (q.field === "requestor" && q.required && invalidReason(id)) break;
+      if (q.field === "requestor" && q.required && (!requestorComplete || invalidReason(id))) break;
       if (opts.some(c => c.goto)) {
         if (!isAnswered(id) && q.required) break;
         id = opts.find(c => c.label === valueOf(id))?.goto || q.next;
@@ -74,7 +74,7 @@
     fill.parentElement.setAttribute("aria-valuenow",String(percent));
     document.getElementById("progressText").textContent = lengths.length === 1 ? `${done} of ${total} answered` : `${done} answered`;
     container.querySelectorAll(".q-card").forEach(card => card.classList.toggle("done",isAnswered(card.dataset.id)));
-    const complete = path.every(id => !invalidReason(id));
+    const complete = path.every(id => !invalidReason(id) && !(Q[id].field === "requestor" && Q[id].required && !requestorComplete));
     submit.hidden = !loaded || stale || !complete;
     submit.disabled = submitting || !loaded || preview || stale || !complete;
   }
@@ -161,6 +161,7 @@
       section = next; nodes.push(renderQuestion(id,i+1));
     });
     container.replaceChildren(...nodes);
+    document.body.classList.toggle("form-start",path.length === 1 && Q[path[0]].field === "requestor" && Q[path[0]].required);
     highlightQuestion(active.has(activeQuestionId) ? activeQuestionId : path.find(id => !isAnswered(id)) || path[0]);
     syncOptions(); updateProgress();
   }
@@ -304,6 +305,7 @@
     } else if (["text", "textarea", "email", "number"].includes(q.type)) {
       const before = visiblePath().join("|");
       answers[id] = q.type === "number" ? (e.target.value === "" ? "" : e.target.valueAsNumber) : e.target.value;
+      if (q.field === "requestor" && invalidReason(id)) requestorComplete = false;
       if (before !== visiblePath().join("|")) {
         const start = e.target.selectionStart, end = e.target.selectionEnd;
         render();
@@ -315,6 +317,24 @@
       syncOptions();
     }
     clearError(card); updateProgress();
+  });
+  function completeRequestor(e) {
+    const card = e.target.closest(".q-card");
+    if (!card || submitting || Q[card.dataset.id].field !== "requestor" || !Q[card.dataset.id].required) return;
+    const id = card.dataset.id;
+    if (invalidReason(id)) {
+      if (e.type === "keydown") showError(card,invalidReason(id));
+      return;
+    }
+    if (requestorComplete) return;
+    requestorComplete = true;
+    render(); goNext(id);
+  }
+  container.addEventListener("focusout",completeRequestor);
+  container.addEventListener("keydown",e => {
+    if (e.key === "Enter" && !e.isComposing && e.target.matches("input.text-in") && Q[e.target.closest(".q-card")?.dataset.id]?.field === "requestor") {
+      e.preventDefault(); completeRequestor(e);
+    }
   });
   container.addEventListener("change",e => {
     const card = e.target.closest("[data-id]"); if (!card || submitting || e.target.disabled) return;
@@ -422,6 +442,7 @@
     Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
     avail = null; availabilityState = "idle"; error.hidden = true;
     document.getElementById("thanks").hidden = true; document.getElementById("progressWrap").hidden = false;
+    requestorComplete = false;
     form.hidden = false; render(); window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
     (container.querySelector(".text-in,.q-title") || container).focus({ preventScroll:true });
   });
@@ -450,7 +471,7 @@
       const config = schema.validate(response.config);
       CFG = config; Q = config.questions; formVersion = response.version;
       Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
-      avail = null; availabilityState = "idle"; stale = false; loaded = true;
+      avail = null; availabilityState = "idle"; stale = false; loaded = true; requestorComplete = false;
       document.getElementById("refreshFormBtn").hidden = true; error.hidden = true;
       document.getElementById("formTitle").textContent = CFG.title; document.title = preview ? `Draft preview — ${CFG.title}` : CFG.title;
       applyTheme(CFG.theme); render(); panel.hidden = true; form.hidden = false;

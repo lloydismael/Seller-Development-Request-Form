@@ -11,7 +11,7 @@ const source = fs.readFileSync(require.resolve("../../app/app.js"), "utf8");
 function renderer(config) {
   const slice = (from, to) => source.slice(source.indexOf(from), source.indexOf(to));
   const context = {
-    CFG:config, Q:config.questions, schema, answers:{}, otherText:{}, avail:null,
+    CFG:config, Q:config.questions, schema, answers:{}, otherText:{}, avail:null, requestorComplete:false,
     availabilityState:"idle", availabilityReady:() => false,
     scheduling:id => ["facilitator", "time"].includes(id),
     localToday:() => "2026-10-14", validDate:s => schema.validDate(s) && s >= "2026-10-14",
@@ -55,6 +55,7 @@ test("submit appears only when the current route is valid and availability is re
     isAnswered:id => !states[id], invalidReason:id => states[id],
     container:{ querySelectorAll:() => [] },
     document:{ getElementById:id => id === "progressFill" ? { style:{}, parentElement:{ setAttribute() {} } } : {} },
+    Q:{ name:{ field:"requestor", required:true }, division:{}, facilitator:{} }, requestorComplete:true,
     submit:{}, submitting:false, loaded:true, preview:false, stale:false
   };
   vm.runInNewContext(source.slice(source.indexOf("  function updateProgress()"), source.indexOf("  function tileInner(")), context);
@@ -71,6 +72,24 @@ test("submit appears only when the current route is valid and availability is re
   context.updateProgress(); assert.equal(context.submit.hidden, true);
   states.name = ""; context.stale = true;
   context.updateProgress(); assert.equal(context.submit.hidden, true);
+});
+
+test("typing a valid first name never exposes submit before completing the name", () => {
+  const r = renderer(config());
+  r.answers.name = "Test Requestor";
+  Object.assign(r, {
+    routeLengths:() => [8], container:{ querySelectorAll:() => [] },
+    document:{ getElementById:id => id === "progressFill" ? { style:{}, parentElement:{ setAttribute() {} } } : {} },
+    submit:{}, submitting:false, loaded:true, preview:false, stale:false
+  });
+  vm.runInNewContext(source.slice(source.indexOf("  function updateProgress()"), source.indexOf("  function tileInner(")), r);
+  r.updateProgress();
+  assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
+  assert.equal(r.submit.hidden, true); assert.equal(r.submit.disabled, true);
+  r.requestorComplete = true;
+  r.updateProgress();
+  assert.deepEqual(Array.from(r.visiblePath()), ["name", "division"]);
+  assert.equal(r.submit.hidden, true); assert.equal(r.submit.disabled, true);
 });
 
 test("actual renderer emits configured numeric bounds, optional controls and escaped arbitrary strings", () => {
@@ -110,9 +129,58 @@ test("requestor name gates Sales Division until valid and hides it again when cl
     assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
   }
   r.answers.name = "Test Requestor";
+  assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
+  r.requestorComplete = true;
   assert.deepEqual(Array.from(r.visiblePath()), ["name", "division"]);
   r.answers.name = "";
   assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
+});
+
+test("name completion waits for Enter or blur and advances only once when valid", () => {
+  const handlers = {}, card = { dataset:{ id:"name" } }, calls = [];
+  const context = {
+    Q:{ name:{ field:"requestor", required:true } }, submitting:false, requestorComplete:false,
+    invalidReason:() => "", render:() => calls.push("render"), goNext:id => calls.push(id),
+    showError:() => calls.push("error"),
+    container:{ addEventListener:(type, handler) => { handlers[type] = handler; } }
+  };
+  vm.runInNewContext(source.slice(source.indexOf("  function completeRequestor("), source.indexOf('  container.addEventListener("change"')), context);
+  const target = { closest:() => card, matches:() => true };
+  handlers.keydown({ key:"Enter", isComposing:true, target });
+  assert.equal(context.requestorComplete, false);
+  let prevented = false;
+  handlers.keydown({ key:"Enter", target, preventDefault:() => { prevented = true; } });
+  assert.ok(prevented); assert.equal(context.requestorComplete, true);
+  assert.deepEqual(calls, ["render", "name"]);
+  handlers.focusout({ type:"focusout", target });
+  assert.equal(calls.length, 2);
+  context.requestorComplete = false;
+  handlers.focusout({ type:"focusout", target });
+  assert.equal(context.requestorComplete, true);
+  context.requestorComplete = false; context.invalidReason = () => "Required";
+  handlers.focusout({ type:"focusout", target });
+  assert.equal(context.requestorComplete, false);
+  context.submitting = true; context.invalidReason = () => "";
+  handlers.focusout({ type:"focusout", target });
+  assert.equal(context.requestorComplete, false);
+});
+
+test("advancing from the completed name centers and focuses the second question", () => {
+  const calls = [], target = {
+    scrollIntoView:options => calls.push(options.block),
+    querySelector:() => ({ focus:options => calls.push(options.preventScroll) })
+  };
+  let advance;
+  const context = {
+    cancelAuto() {}, setTimeout:fn => { advance = fn; }, submitting:false, form:{ hidden:false },
+    invalidReason:() => "", visiblePath:() => ["name", "division"], isAnswered:id => id === "name",
+    reducedMotion:{ matches:true }, container:{ querySelector:selector => {
+      assert.equal(selector, '[data-id="division"]'); return target;
+    } }
+  };
+  vm.runInNewContext(source.slice(source.indexOf("  function goNext("), source.indexOf("  function invalidReason(")), context);
+  context.goNext("name"); advance();
+  assert.deepEqual(calls, ["center", true]);
 });
 
 test("active question glow follows focus and exposes the current step", () => {
@@ -146,7 +214,7 @@ test("optional requestor does not block configured routing", () => {
 
 test("actual renderer follows scheduling graph rather than editable presentation order", () => {
   const c = config(); c.order.reverse(); const r = renderer(schema.validate(c));
-  r.answers.name = "Test Requestor";
+  r.answers.name = "Test Requestor"; r.requestorComplete = true;
   r.answers.division = "LG Division"; r.answers.category = c.questions.category.choices[0].label;
   const path = Array.from(r.visiblePath());
   assert.ok(path.indexOf("date") < path.indexOf("facilitator"));

@@ -22,12 +22,20 @@ swa-cli.config.json        local run config
 ## Booking form experience
 
 Question cards use consistent heading/helper-text spacing, readable option labels,
-48px text inputs, and responsive option sizing. Compact form settings remain supported.
+48px text inputs, and uniform option tiles: two equal-width columns on desktop and
+one on mobile, with equal-height rows within each question. Long labels and helper
+text wrap without clipping. Training Venue uses smaller tiles, icons, and spacing,
+with an inline Other field. Its options scroll internally on shorter screens so the
+active zoomed card stays compact without hiding choices. Compact form settings remain supported.
 
-The required requestor name is shown first; Sales Division and subsequent questions
-appear only after a valid name is entered. Clearing the name hides downstream
+The required requestor name section is centered in the available page space on first
+load, reset, or when the name is cleared. Sales Division and subsequent questions
+appear after a valid name is completed by pressing Enter or leaving the name field;
+the second question becomes active and scrolls into view. Typing alone does not
+advance or show the Submit request button. Clearing the name hides downstream
 questions and clears their answers. The current question has a persistent, theme-aware
-focus glow and animated zoom (3.5% on desktop, 2% on mobile), including in draft
+focus glow and centered animated zoom (6% on desktop, 3% on mobile), with
+responsive side gutters to keep enlarged cards within the page, including in draft
 preview. Cards ease back to normal size when deselected. Surrounding cards use quieter
 slate surfaces and a slight blur; hover or keyboard focus clears the blur, and clicking
 a question selects it. Invalid cards remain sharp. Reduced-motion mode disables both

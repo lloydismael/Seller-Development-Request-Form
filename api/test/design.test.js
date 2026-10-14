@@ -53,6 +53,12 @@ test("initial name section is centered in the available viewport without a blank
   assert.match(styles, /\.form-start \.submit-bar:has\(#submitBtn\[hidden\]\) \{ display:none; \}/);
 });
 
+test("programmatically focused question titles have no colored outline while controls retain focus indicators", () => {
+  assert.match(styles, /\.q-title\[tabindex="-1"\]:focus-visible \{ outline:none; \}/);
+  assert.match(styles, /:focus-visible,\.text-in:focus-visible,\.other-in:focus-visible \{ outline-color:var\(--focus\); \}/);
+  assert.match(html, /id="questions"/);
+});
+
 test("question styling uses consistent readable typography and input spacing", () => {
   assert.match(styles, /\.hint \{ margin:0 0 12px 42px; line-height:1\.6; \}/);
   assert.match(styles, /\.text-in \{ font-size:16px; padding:12px 14px; \}/);

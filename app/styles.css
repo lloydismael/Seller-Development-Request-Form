@@ -216,6 +216,7 @@ textarea.text-in { min-height:112px; }
 #thanks { border-color:var(--line); box-shadow:var(--ui-shadow); padding:32px; }
 #thanks h2,.picked { color:var(--ui-focus); }
 :focus-visible,.text-in:focus-visible,.other-in:focus-visible { outline-color:var(--focus); }
+.q-title[tabindex="-1"]:focus-visible { outline:none; }
 @media (max-width:640px) {
   .q-card,#thanks { padding:20px 16px; }
   .hint { margin-left:0; }

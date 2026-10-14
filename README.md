@@ -81,7 +81,8 @@ that property is not indexed, so large datasets may require an indexed history s
 ## Application design and appearance
 
 Public and admin screens share a slate-and-teal design system in `app/design-tokens.css`
-and accessible theme controls in `app/ui-controls.css`. Semantic light/dark colors cover
+and accessible theme controls in `app/ui-controls.css`. Question titles focused during
+section navigation have no colored outline; interactive controls retain focus indicators. Semantic light/dark colors cover
 surfaces, text, focus, status feedback, tables, calendars, and dialogs. The shared
 `app/theme.js` applies the saved preference before page rendering and synchronizes
 changes across same-origin pages, including draft previews. If storage is unavailable,

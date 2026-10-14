@@ -24,7 +24,9 @@ swa-cli.config.json        local run config
 The required requestor name is shown first; Sales Division and subsequent questions
 appear only after a valid name is entered. Clearing the name hides downstream
 questions and clears their answers. The current question has a persistent, theme-aware
-focus glow, including in draft preview. Surrounding cards are gently dimmed and
+focus glow and a subtle animated scale-up (smaller on mobile), including in draft
+preview. Cards ease back to normal size when deselected; reduced-motion mode disables
+scaling. Surrounding cards are gently dimmed and
 return to full visibility on hover or focus; clicking a question selects it.
 Keyboard focus is preserved while typing. The header centers the title and logo,
 with an icon-only Dark mode switch at the far right. The switch retains its accessible

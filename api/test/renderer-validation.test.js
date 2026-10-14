@@ -48,6 +48,31 @@ function config() {
   return schema.validate(c);
 }
 
+test("submit appears only when the current route is valid and availability is ready", () => {
+  const states = { name:"Required", division:"Required", facilitator:"Checking availability" };
+  const context = {
+    visiblePath:() => Object.keys(states), routeLengths:() => [3],
+    isAnswered:id => !states[id], invalidReason:id => states[id],
+    container:{ querySelectorAll:() => [] },
+    document:{ getElementById:id => id === "progressFill" ? { style:{}, parentElement:{ setAttribute() {} } } : {} },
+    submit:{}, submitting:false, loaded:true, preview:false, stale:false
+  };
+  vm.runInNewContext(source.slice(source.indexOf("  function updateProgress()"), source.indexOf("  function tileInner(")), context);
+  context.updateProgress(); assert.equal(context.submit.hidden, true);
+  states.name = ""; states.division = "";
+  context.updateProgress(); assert.equal(context.submit.hidden, true);
+  states.facilitator = "";
+  context.updateProgress(); assert.equal(context.submit.hidden, false); assert.equal(context.submit.disabled, false);
+  context.preview = true;
+  context.updateProgress(); assert.equal(context.submit.hidden, false); assert.equal(context.submit.disabled, true);
+  context.preview = false; context.submitting = true;
+  context.updateProgress(); assert.equal(context.submit.hidden, false); assert.equal(context.submit.disabled, true);
+  context.submitting = false; states.name = "Required";
+  context.updateProgress(); assert.equal(context.submit.hidden, true);
+  states.name = ""; context.stale = true;
+  context.updateProgress(); assert.equal(context.submit.hidden, true);
+});
+
 test("actual renderer emits configured numeric bounds, optional controls and escaped arbitrary strings", () => {
   const r = renderer(config());
   const number = r.renderQuestion("score", 1).innerHTML;

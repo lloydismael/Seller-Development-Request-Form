@@ -34,13 +34,14 @@ a { color:var(--primary); }
 .brand small { display:block; margin-top:5px; color:var(--muted); font-size:11px; font-weight:400; }
 .navigation { display:flex; flex-direction:column; flex:1; min-height:0; overflow:auto; }
 .nav-label { margin:0 12px 10px; color:var(--muted); font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:700; }
-.nav-toggle { display:none; }
+.btn.nav-toggle { display:none; }
 .tabs { display:flex; flex-direction:column; gap:5px; }
 .tab { display:flex; align-items:center; gap:12px; background:none; border:1px solid transparent; color:var(--ui-muted); padding:11px 12px; min-height:44px; text-align:left; font:inherit; cursor:pointer; border-radius:8px; }
 .tab span { width:20px; font-size:19px; line-height:1; text-align:center; flex:none; }
 .tab:hover { background:var(--ui-raised); color:var(--ui-text); }
 .tab.active { background:var(--ui-info-bg); color:var(--primary); border-color:var(--line); font-weight:700; box-shadow:inset 3px 0 var(--primary); }
-.user { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:10px; font-size:12px; margin-top:auto; padding:24px 4px 0; }
+.user { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:center; gap:10px; font-size:12px; margin-top:auto; padding:24px 4px 0; }
+.user .btn { display:flex; align-items:center; justify-content:center; width:100%; min-width:0; min-height:44px; height:100%; padding:8px; line-height:1.4; overflow-wrap:anywhere; }
 #userName { grid-column:1/-1; font-weight:600; overflow-wrap:anywhere; }
 .badge { justify-self:start; grid-column:1/-1; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:700; background:var(--ui-success-bg); color:var(--ui-success); }
 .badge.local { background:var(--ui-warning-bg); color:var(--ui-warning); }
@@ -250,7 +251,7 @@ input::placeholder, textarea::placeholder { color:var(--muted); opacity:1; }
   .topbar { position:sticky; inset:auto; top:0; width:auto; border-right:0; border-bottom:1px solid var(--line); padding:14px 100px 14px 16px; flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px; }
   .brand { padding:0; flex:1; min-width:160px; }
   .brand small { font-size:10px; }
-  .nav-toggle { display:inline-flex; align-items:center; justify-content:center; }
+  .btn.nav-toggle { display:inline-flex; align-items:center; justify-content:center; }
   .navigation { display:none; flex:1 0 100%; padding-top:12px; max-height:calc(100dvh - 100px); }
   .topbar.nav-open .navigation { display:flex; }
   .tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }

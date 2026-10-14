@@ -21,20 +21,27 @@ swa-cli.config.json        local run config
 
 ## Booking form experience
 
+Question cards use consistent heading/helper-text spacing, readable option labels,
+48px text inputs, and responsive option sizing. Compact form settings remain supported.
+
 The required requestor name is shown first; Sales Division and subsequent questions
 appear only after a valid name is entered. Clearing the name hides downstream
 questions and clears their answers. The current question has a persistent, theme-aware
-focus glow and a subtle animated scale-up (smaller on mobile), including in draft
-preview. Cards ease back to normal size when deselected; reduced-motion mode disables
-scaling. Surrounding cards use quieter slate surfaces without fading their text;
-hover or focus restores their emphasis, and clicking a question selects it.
+focus glow and animated zoom (3.5% on desktop, 2% on mobile), including in draft
+preview. Cards ease back to normal size when deselected. Surrounding cards use quieter
+slate surfaces and a slight blur; hover or keyboard focus clears the blur, and clicking
+a question selects it. Invalid cards remain sharp. Reduced-motion mode disables both
+zoom and background blur.
 Keyboard focus is preserved while typing. The header centers the title and logo,
 with an icon-only Dark mode switch at the far right. The switch retains its accessible
 label and uses an animated sun/moon toggle and smooth color transitions. It initially follows the
 system appearance and remembers an explicit choice locally when storage is available.
 All animations respect reduced-motion preferences. The progress bar remains visible
 without a count label, and required fields retain individual indicators and validation
-without a standalone required legend.
+without a standalone required legend. Submit request is hidden until every required
+answer on the selected route is valid and scheduling availability is ready. Optional
+questions may remain blank; invalid optional answers must be corrected. Clearing or
+invalidating an answer hides the button again. Draft previews never enable submission.
 
 ## Application design and appearance
 

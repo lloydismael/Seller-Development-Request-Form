@@ -74,7 +74,9 @@
     fill.parentElement.setAttribute("aria-valuenow",String(percent));
     document.getElementById("progressText").textContent = lengths.length === 1 ? `${done} of ${total} answered` : `${done} answered`;
     container.querySelectorAll(".q-card").forEach(card => card.classList.toggle("done",isAnswered(card.dataset.id)));
-    submit.disabled = submitting || !loaded || preview || stale;
+    const complete = path.every(id => !invalidReason(id));
+    submit.hidden = !loaded || stale || !complete;
+    submit.disabled = submitting || !loaded || preview || stale || !complete;
   }
 
   function tileInner(id,label) {

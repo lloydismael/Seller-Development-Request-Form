@@ -4,6 +4,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../../app/admin/admin.js'), 'utf8');
 const html = fs.readFileSync(require.resolve('../../app/admin/index.html'), 'utf8');
+const css = fs.readFileSync(require.resolve('../../app/admin/admin.css'), 'utf8');
+
+test('desktop menu stays hidden and account actions use equal responsive dimensions', () => {
+  assert.match(css, /\.btn\.nav-toggle \{ display:none; \}/);
+  assert.match(css, /@media \(max-width:900px\)[\s\S]*\.btn\.nav-toggle \{ display:inline-flex;/);
+  assert.match(css, /\.user \.btn \{[^}]*width:100%;[^}]*min-height:44px; height:100%;/);
+});
 
 function navigation() {
   const ids = [...html.matchAll(/data-tab="([^"]+)"/g)].map(match => match[1]);

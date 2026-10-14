@@ -26,9 +26,21 @@ test("public redesign keeps hidden legends and accessible progress while preserv
   assert.doesNotMatch(html, /class="required-note"/);
   assert.match(html, /aria-describedby="progressText"/);
   assert.ok(html.indexOf("/design-tokens.css") < html.indexOf("/styles.css"));
-  assert.match(styles, /#questions \.q-card\.is-active \{ scale:1\.012/);
+  assert.match(styles, /#questions \.q-card\.is-active \{ scale:1\.035/);
+  assert.match(styles, /@media \(max-width:640px\) \{ #questions \.q-card\.is-active \{ scale:1\.02/);
+  assert.match(styles, /transition:scale \.36s[^;]*filter \.25s ease/);
+  assert.match(styles, /:not\(:focus-within\):not\(:hover\):not\(\.invalid\)[^}]*filter:blur\(\.7px\)/);
+  assert.match(styles, /prefers-reduced-motion:reduce[\s\S]*#questions:has\(\.is-active\) \.q-card \{ filter:none; \}/);
   assert.match(styles, /prefers-reduced-motion:reduce[\s\S]*#questions \.q-card\.is-active \{ scale:1; \}/);
   assert.doesNotMatch(styles, /opacity:\.65/);
+});
+
+test("question styling uses consistent readable typography and input spacing", () => {
+  assert.match(styles, /\.hint \{ margin:0 0 12px 42px; line-height:1\.6; \}/);
+  assert.match(styles, /\.text-in \{ font-size:16px; padding:12px 14px; \}/);
+  assert.match(styles, /textarea\.text-in \{ min-height:112px; \}/);
+  assert.match(styles, /:root\[data-density="compact"\] \.tile \{ min-height:64px; \}/);
+  assert.match(styles, /\.q-title \{ font-size:17px; \}/);
 });
 
 test("new default palette never replaces an explicit saved form theme", () => {

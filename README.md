@@ -53,7 +53,7 @@ invalidating an answer hides the button again. Draft previews never enable submi
 
 ## Anonymous request history
 
-**My Request** at the top right of the public header opens this browser's previous
+**My Request** at the top left of the public header opens this browser's previous
 and newly created requests, newest first, with pagination, current status and read-only
 submitted answers. The submission confirmation also provides **View my requests**.
 No login or physical-device fingerprinting is used. A server-generated HttpOnly,

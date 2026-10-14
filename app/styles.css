@@ -145,7 +145,8 @@ textarea.text-in { resize:vertical; min-height:84px; }
 :root .date-tile.on .dow,:root .date-tile.on .mm { color:inherit; }
 :focus-visible,.text-in:focus-visible,.other-in:focus-visible { outline:3px solid #8275e0; outline-offset:3px; }
 @media (max-width:640px) { .retry-btn { margin-left:0; } }
-.hero-actions { position:absolute; top:16px; right:20px; display:flex; gap:12px; align-items:center; }
+.hero-actions { position:absolute; top:16px; left:20px; right:20px; display:flex; gap:12px; align-items:center; justify-content:flex-end; }
+.hero-actions #historyBtn { margin-right:auto; }
 .hero-actions .admin-btn { position:static; min-height:44px; }
 :root[data-color-mode="dark"] { --bg:var(--ui-bg) !important; --primary:var(--ui-primary) !important; --primary-2:var(--ui-primary) !important; --primary-ink:var(--ui-primary-ink) !important; }
 :root[data-color-mode="dark"] .hero-logo { background:#fff; }

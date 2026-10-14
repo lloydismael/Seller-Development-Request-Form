@@ -7,7 +7,7 @@
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let submitting = false, activeQuestionId, requestorComplete = false;
-  let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0;
+  let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0, confirmationVersion = 0;
   const choiceObj = c => typeof c === "string" ? { label:c } : c;
   const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
   const isAnswered = id => {
@@ -413,6 +413,7 @@
     container.querySelectorAll("input,textarea,button").forEach(el => el.disabled = true);
     error.hidden = true; updateProgress(); submit.textContent = "Submitting…";
     try {
+      await window.RequestHistory?.ready;
       const saved = await S.create(rec);
       form.hidden = true; document.getElementById("progressWrap").hidden = true; document.getElementById("thanks").hidden = false;
       const snapshot = saved?.answerSnapshot || validated.answerSnapshot;
@@ -421,6 +422,8 @@
       warning.textContent = saved?.warning || (saved?.auditRecorded === false ? "Booking saved, but activity recording failed. Do not resubmit this booking." : ""); warning.hidden = !warning.textContent;
       window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
       document.querySelector("#thanks h2").focus({ preventScroll:true });
+      const version = ++confirmationVersion;
+      void window.RequestHistory?.verifySaved(saved.id, () => version === confirmationVersion);
     } catch (err) {
       if (err.status === 409 && ["FORM_EXPIRED", "FORM_VERSION_CONFLICT", "STALE_FORM"].includes(err.code)) {
         stale = true; document.getElementById("refreshFormBtn").hidden = false;
@@ -438,6 +441,7 @@
   });
   document.getElementById("againBtn").addEventListener("click",() => {
     if (submitting || preview) return;
+    ++confirmationVersion;
     cancelAuto(); ++requestVersion;
     Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
     avail = null; availabilityState = "idle"; error.hidden = true;

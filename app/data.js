@@ -79,6 +79,7 @@
     if (!["GET", "HEAD"].includes(method)) writable();
     const r = await fetch(url, {
       method, credentials: "same-origin", mode:"same-origin", cache:"no-store",
+      ...(url.startsWith("/api/my-requests") ? { signal:AbortSignal.timeout(10000) } : {}),
       headers: { Accept:"application/json", ...(!["GET", "HEAD"].includes(method) ? { "X-Admin-Request":"1", "Content-Type":"application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined
     });
@@ -99,6 +100,20 @@
   }
   const isApi = async () => (await mode()) === "api";
 
+  const LS_OWNER = "sdrf_history_owner_v1";
+  function localOwner() {
+    let owner = localStorage.getItem(LS_OWNER);
+    if (!owner) { owner = uid(); localStorage.setItem(LS_OWNER, owner); }
+    return owner;
+  }
+  function historyRecord(b, detail = false) {
+    const out = {};
+    for (const key of ["id", "createdAt", "updatedAt", "status", "trainingDate", "time", "facilitator", "category"])
+      if (b[key] !== undefined) out[key] = b[key];
+    if (detail) out.answerSnapshot = b.answerSnapshot || [];
+    return out;
+  }
+
   window.BookingStore = {
     slotRange, overlaps, isActive, findConflicts, conflictMessage, availabilityFor, mode,
 
@@ -110,8 +125,25 @@
       const validated = window.FormSchema.submission(live.config, b.answerValues);
       const all = read(LS_B), c = findConflicts(all, read(LS_BL), validated);
       if (c.length) throw fail(409, conflictMessage(c), { code:"SLOT_CONFLICT" });
-      const rec = { ...validated, formVersion:live.version, id: uid(), status: "Pending", createdAt: new Date().toISOString(), adminNotes: "" };
+      const rec = { ...validated, formVersion:live.version, id: uid(), status: "Pending", createdAt: new Date().toISOString(), adminNotes: "", historyOwner:localOwner() };
       all.push(rec); write(LS_B, all); return rec;
+    },
+    async myRequests(cursor) {
+      if (preview) throw fail(403, "Request history is unavailable in draft preview.");
+      if (await isApi()) return api("GET", `/api/my-requests${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const recognized = !!localStorage.getItem(LS_OWNER), owner = localOwner();
+      const offset = cursor ? Number(cursor) : 0;
+      if (!Number.isSafeInteger(offset) || offset < 0) throw fail(400, "Invalid history cursor.");
+      const all = read(LS_B).filter(b => b.historyOwner === owner).sort((a,b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+      return { items:all.slice(offset, offset + 20).map(b => historyRecord(b)), nextCursor:offset + 20 < all.length ? String(offset + 20) : null, recognized };
+    },
+    async myRequest(id) {
+      if (preview) throw fail(403, "Request history is unavailable in draft preview.");
+      if (await isApi()) return api("GET", `/api/my-requests/${encodeURIComponent(id)}`);
+      const owner = localStorage.getItem(LS_OWNER);
+      const booking = owner && read(LS_B).find(b => b.id === id && b.historyOwner === owner);
+      if (!booking) throw fail(404, "Request not found in this browser's history.");
+      return historyRecord(booking, true);
     },
     async list() { return (await isApi()) ? api("GET", "/api/bookings") : read(LS_B); },
     async update(id, patch) {

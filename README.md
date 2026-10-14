@@ -51,6 +51,32 @@ answer on the selected route is valid and scheduling availability is ready. Opti
 questions may remain blank; invalid optional answers must be corrected. Clearing or
 invalidating an answer hides the button again. Draft previews never enable submission.
 
+## Anonymous request history
+
+**My requests** in the public header and submission confirmation shows this browser's
+requests, newest first, with pagination, current status and read-only submitted answers.
+No login or physical-device fingerprinting is used. A server-generated HttpOnly,
+SameSite=Strict cookie scoped to `/api` grants access for one year, renewed on return;
+production uses Secure cookies. Only the token hash is stored with each new request.
+History responses are not cached and exclude internal admin notes and ownership data.
+
+Requests remain in shared server storage under the existing retention policy. Clearing
+cookies removes access, not the requests. Private browsing, blocked cookies, a different
+browser/profile or a different device may have no history. Anyone sharing the browser
+profile can see its history. There is no recovery code, cross-device sync, editing or
+cancellation in this feature; earlier unowned requests cannot be claimed retroactively.
+A successful submission is still saved if history access cannot be confirmed; the
+confirmation warns against resubmitting it. Draft preview does not initialize history.
+The explicit localhost `?storage=local` demo uses browser storage only and is not a
+production persistence mechanism.
+
+Public endpoints: `GET /api/my-requests?cursor=...` returns
+`{items,nextCursor,recognized}`; `GET /api/my-requests/{id}` returns an owned request's
+safe detail or 404. Both derive ownership from the cookie, never a client-supplied
+owner identifier. History reads time out after ten seconds so initialization cannot
+block submission indefinitely. Azure Table queries filter ownership server-side;
+that property is not indexed, so large datasets may require an indexed history store.
+
 ## Application design and appearance
 
 Public and admin screens share a slate-and-teal design system in `app/design-tokens.css`

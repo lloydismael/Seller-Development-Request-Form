@@ -156,7 +156,8 @@ test("local UI mode is explicit; deployed file backend is rejected",async () => 
   const saved = await local.store.create(input);
   assert.equal(saved.requestor,"Test"); assert.equal(saved.answerValues.participants,25);
   assert.equal(saved.formVersion,live.version); assert.equal(saved.status,"Pending");
-  assert.equal(saved.answerSnapshot[0].id,"name"); assert.equal(local.local.size,1);
+  assert.equal(saved.answerSnapshot[0].id,"name"); assert.equal(local.local.size,2);
+  assert.equal(saved.historyOwner,local.local.get("sdrf_history_owner_v1"));
   assert.deepEqual(JSON.parse(local.local.get("sdrf_bookings_v2")), [JSON.parse(JSON.stringify(saved))]);
   await assert.rejects(local.store.create(input), e => e.code === "SLOT_CONFLICT");
   assert.equal(JSON.parse(local.local.get("sdrf_bookings_v2")).length,1);

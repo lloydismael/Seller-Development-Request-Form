@@ -6,7 +6,7 @@ const source = fs.readFileSync(require.resolve("../../app/data.js"), "utf8");
 const plain = value => JSON.parse(JSON.stringify(value));
 function browser(search = "", hostname = "example.com", reply = () => ({ ok:true })) {
   const calls = [], local = new Map(), session = new Map([["sdrf_admin", "untrusted-old-session"]]);
-  const context = { window:{}, location:{ hostname, search }, URLSearchParams, AbortSignal,
+  const context = { window:{}, location:{ hostname, search }, URLSearchParams, AbortSignal, crypto:require("node:crypto"),
     localStorage:{ getItem:k => local.get(k) || null, setItem:(k, v) => local.set(k, v) },
     sessionStorage:{ getItem:k => session.get(k), setItem:(k, v) => session.set(k, v), removeItem:k => session.delete(k) },
     fetch:async (url, options) => {
@@ -26,6 +26,9 @@ const password = { currentPassword:" old test password ", newPassword:" new test
 const cases = [
   ["create", [{ formVersion:"v1", answerValues:{ participants:25 } }], "POST", "/api/bookings", { formVersion:"v1", answerValues:{ participants:25 } }],
   ["list", [], "GET", "/api/bookings"],
+  ["myRequests", [], "GET", "/api/my-requests"],
+  ["myRequests", ["cursor /?"], "GET", "/api/my-requests?cursor=cursor%20%2F%3F"],
+  ["myRequest", ["id /?"], "GET", "/api/my-requests/id%20%2F%3F"],
   ["update", ["id /?", { status:"Approved" }], "PUT", "/api/bookings/id%20%2F%3F", { status:"Approved" }],
   ["remove", ["id /?"], "DELETE", "/api/bookings/id%20%2F%3F"],
   ["availability", ["2026-12-01 &"], "GET", "/api/availability?date=2026-12-01%20%26"],
@@ -51,11 +54,34 @@ for (const [name, args, method, url, body] of cases) test(`persistent transport 
   assert.deepEqual(plain(await b.store[name](...args)), result);
   assert.equal(b.calls.length,2);
   const call = b.calls[1]; assert.equal(call.url,url);
-  assert.deepEqual(plain(call.options), { method, credentials:"same-origin", mode:"same-origin", cache:"no-store",
+  if (url.startsWith("/api/my-requests")) {
+    assert.ok(call.options.signal instanceof AbortSignal);
+    assert.equal(call.options.signal.aborted,false);
+  } else assert.equal(call.options.signal,undefined);
+  const { signal, ...options } = call.options;
+  assert.deepEqual(plain(options), { method, credentials:"same-origin", mode:"same-origin", cache:"no-store",
     headers:{ Accept:"application/json", ...(method === "GET" ? {} : { "X-Admin-Request":"1", "Content-Type":"application/json" }) },
     ...(body === undefined ? {} : { body:JSON.stringify(body) }) });
   assert.equal(b.local.size,0); assert.equal(b.session.get("sdrf_admin"),"untrusted-old-session");
   await b.store.mode(); assert.equal(b.calls.length,2, "Healthy mode detection is cached");
+});
+
+test("demo history isolates owned records, paginates and never exposes internal fields", async () => {
+  const b = browser("?storage=local", "localhost");
+  assert.equal((await b.store.myRequests()).recognized,false);
+  const owner = b.local.get("sdrf_history_owner_v1");
+  const owned = Array.from({length:21}, (_,i) => ({id:String(i).padStart(2,"0"),createdAt:"2026-01-01",historyOwner:owner,status:"Pending",adminNotes:"private",updatedBy:"admin",answerSnapshot:[{title:"Name",value:"Test"}]}));
+  b.local.set("sdrf_bookings_v2",JSON.stringify([...owned,{id:"legacy"},{id:"foreign",historyOwner:"someone-else"}]));
+  const page = await b.store.myRequests(); assert.equal(page.items.length,20); assert.equal(page.items[0].id,"20");
+  assert.equal(page.recognized,true); assert.equal(page.nextCursor,"20");
+  assert.deepEqual(plain((await b.store.myRequests(page.nextCursor)).items.map(x => x.id)),["00"]);
+  const detail = await b.store.myRequest("00");
+  assert.equal(detail.historyOwner,undefined); assert.equal(detail.adminNotes,undefined); assert.equal(detail.updatedBy,undefined);
+  assert.equal(detail.answerSnapshot[0].value,"Test");
+  for (const id of ["legacy","foreign"]) await assert.rejects(b.store.myRequest(id), e => e.status === 404);
+  await assert.rejects(b.store.myRequests("bad"), e => e.status === 400);
+  b.local.delete("sdrf_history_owner_v1"); assert.equal((await b.store.myRequests()).items.length,0);
+  assert.equal(b.calls.length,0);
 });
 
 test("admin adapter keeps positional draft/publish arguments for the current transport", async () => {

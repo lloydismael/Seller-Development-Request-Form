@@ -94,8 +94,34 @@ async function table(name) {
   return clients[name];
 }
 
+function entity(name, obj) {
+  return { partitionKey:PK, rowKey:obj.id, data:JSON.stringify(obj),
+    ...(name === "bookings" && obj.ownerHash ? { ownerHash:obj.ownerHash, createdAt:obj.createdAt } : {}) };
+}
+const newestFirst = (a, b) => a.createdAt === b.createdAt ? (a.id === b.id ? 0 : a.id > b.id ? -1 : 1) : a.createdAt > b.createdAt ? -1 : 1;
+
 function collection(name) {
   return {
+    // Table properties are server-filtered, not indexed. Keep only limit+1
+    // matches in memory; Azure Tables cannot ORDER BY createdAt or ownerHash.
+    async listOwned(ownerHash, { limit, after }) {
+      if (name !== "bookings" || !/^[a-f0-9]{64}$/.test(ownerHash) || !Number.isInteger(limit) || limit < 1 || limit > 50 ||
+        (after && (typeof after.createdAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(after.createdAt) || !/^[A-Za-z0-9_-]{1,128}$/.test(after.id))))
+        throw new TypeError("Invalid owner query.");
+      const out = [];
+      const add = record => {
+        if (record.ownerHash !== ownerHash || typeof record.createdAt !== "string" || (after && newestFirst(record, after) <= 0)) return;
+        out.push(record); out.sort(newestFirst); if (out.length > limit + 1) out.pop();
+      };
+      if (kind === "file") {
+        for (const record of (await readDb()).bookings || []) add(record);
+      } else {
+        let filter = `PartitionKey eq '${PK}' and ownerHash eq '${ownerHash}'`;
+        if (after) filter += ` and (createdAt lt '${after.createdAt}' or (createdAt eq '${after.createdAt}' and RowKey lt '${after.id}'))`;
+        for await (const e of (await table(name)).listEntities({ queryOptions:{ filter } })) add(JSON.parse(e.data));
+      }
+      return { items:out.slice(0, limit), hasMore:out.length > limit };
+    },
     // Missing records return null; versions are opaque and must not be interpreted.
     async getWithVersion(id) {
       if (kind === "file") {
@@ -117,7 +143,7 @@ function collection(name) {
         db[name][index] = obj; bumpVersion(db, name, id); return obj;
       });
       try {
-        await (await table(name)).updateEntity({ partitionKey:PK, rowKey:id, data:JSON.stringify(obj) }, "Replace", { etag:version });
+        await (await table(name)).updateEntity(entity(name, obj), "Replace", { etag:version });
         return obj;
       } catch (e) { if (e.statusCode === 412 || e.statusCode === 404) throw conflict(); throw e; }
     },
@@ -134,7 +160,7 @@ function collection(name) {
     },
     async put(obj) {
       if (kind === "file") return withDb(db => { db[name] = (db[name] || []).filter(x => x.id !== obj.id); db[name].push(obj); bumpVersion(db, name, obj.id); return obj; });
-      await (await table(name)).upsertEntity({ partitionKey: PK, rowKey: obj.id, data: JSON.stringify(obj) }, "Replace");
+      await (await table(name)).upsertEntity(entity(name, obj), "Replace");
       return obj;
     },
     async remove(id) {
@@ -147,7 +173,7 @@ function collection(name) {
         if ((db[name] || []).some(x => x.id === obj.id)) throw Object.assign(new Error("Record already exists."), { statusCode:409 });
         (db[name] ||= []).push(obj); bumpVersion(db, name, obj.id); return obj;
       });
-      await (await table(name)).createEntity({ partitionKey:PK, rowKey:obj.id, data:JSON.stringify(obj) });
+      await (await table(name)).createEntity(entity(name, obj));
       return obj;
     }
   };

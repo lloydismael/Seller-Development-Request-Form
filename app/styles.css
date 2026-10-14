@@ -227,6 +227,19 @@ textarea.text-in { min-height:112px; }
   .theme-toggle { padding:6px 8px; font-size:12px; }
   .hero { padding-top:76px; }
 }
+.request-history { width:min(760px,calc(100% - 32px)); max-height:85dvh; padding:24px; border:1px solid var(--line); border-radius:16px; background:var(--card); color:var(--ui-text); overflow-y:auto; }
+.request-history::backdrop { background:rgb(0 0 0 / .55); }
+.history-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.history-heading h2 { margin:0; }
+.request-history p { overflow-wrap:anywhere; }
+.history-item { border:1px solid var(--line); border-radius:10px; padding:16px; margin:12px 0; }
+.history-item h3 { margin-top:0; }
+.history-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+@media (max-width:640px) {
+  .hero-actions { left:12px; justify-content:flex-end; flex-wrap:wrap; }
+  .hero-actions .btn { padding:8px 10px; }
+  .request-history { padding:16px; }
+}
 .q-card[data-id="venue"] .tiles {
   gap:8px;
   max-height:max(160px,calc(94dvh - 180px));

@@ -1,6 +1,7 @@
 const { app } = require("@azure/functions");
 const { randomUUID } = require("crypto");
 const store = require("../store");
+const anonymous = require("../anonymous");
 const { findConflicts, conflictMessage, isActive, inBlock } = require("../rules");
 const { isAdmin, adminUser, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
 const forms = require("../forms");
@@ -28,9 +29,10 @@ const safeIdentity = who => who ? { id:who.id, user:who.user, provider:who.provi
 // All browser admin writes (including login/logout) require a non-simple header.
 // A missing Origin is allowed for same-origin fetch/CLI; cross-origin requests
 // still cannot set this header without preflight. No permissive CORS is added.
-function sameOrigin(req) {
-  if (req.headers.get("x-admin-request") !== "1") return false;
-  if (req.headers.get("sec-fetch-site") === "cross-site") return false;
+function sameOrigin(req, admin = true) {
+  if (admin && req.headers.get("x-admin-request") !== "1") return false;
+  const site = req.headers.get("sec-fetch-site");
+  if (site === "cross-site" || (!admin && site === "same-site")) return false;
   const origin = req.headers.get("origin");
   if (!origin) return true;
   try {
@@ -60,6 +62,8 @@ function http(name, definition) {
   const handler = definition.handler;
   app.http(name, { ...definition, handler:async (req, context) => {
     try {
+      if ((name === "myRequests" || name === "myRequest" || (name === "bookings" && req.method === "POST")) && !sameOrigin(req, false))
+        return json(403, { error:"Request origin is not allowed." });
       const privateRoute = privateRoutes.has(name) || (name === "bookings" && req.method === "GET");
       if (privateRoute && !await isAdmin(req)) return DENIED;
       if (!["GET", "HEAD"].includes(req?.method) && (privateRoute || name === "authLogin" || name === "authLogout") && !sameOrigin(req))
@@ -97,8 +101,9 @@ http("health", {
 http("bookings", {
   methods: ["GET", "POST"], authLevel: "anonymous", route: "bookings",
   handler: async (req) => {
-    if (req.method === "GET") return await isAdmin(req) ? json(200, await store.bookings.list()) : DENIED;
+    if (req.method === "GET") return await isAdmin(req) ? json(200, (await store.bookings.list()).map(anonymous.withoutOwner)) : DENIED;
 
+    const browser = anonymous.identity(req);
     const b = await body(req);
     if (!b) return json(400, { error: "Invalid JSON body." });
     let rec;
@@ -116,10 +121,34 @@ http("bookings", {
     const c = findConflicts(all, blocks, rec);
     if (c.length) return json(409, { code:"SLOT_CONFLICT", error: conflictMessage(c) });
 
-    Object.assign(rec, { id: randomUUID(), status: "Pending", adminNotes: "", createdAt: new Date().toISOString() });
+    Object.assign(rec, { id: randomUUID(), status: "Pending", adminNotes: "", createdAt: new Date().toISOString(), ownerHash:browser.ownerHash });
     schema.size(rec);
     await store.bookings.put(rec);
-    return audited(req, 201, rec, "booking.create", rec.id, "Booking submitted", "anonymous");
+    const result = await audited(req, 201, { ...anonymous.withoutOwner(rec), historyAvailable:browser.recognized }, "booking.create", rec.id, "Booking submitted", "anonymous");
+    return { ...result, cookies:[anonymous.cookie(req, browser.token)] };
+  }
+});
+
+// Initialize/renew the browser capability early, before parallel submissions.
+http("myRequests", {
+  methods:["GET"], authLevel:"anonymous", route:"my-requests",
+  handler:async req => {
+    const page = anonymous.pagination(req.query), browser = anonymous.identity(req);
+    const result = browser.recognized ? await store.bookings.listOwned(browser.ownerHash, page) : { items:[], hasMore:false };
+    return { ...json(200, { items:result.items.map(anonymous.summary),
+      nextCursor:result.hasMore ? anonymous.cursor(result.items[result.items.length - 1]) : null, recognized:browser.recognized }),
+      cookies:[anonymous.cookie(req, browser.token)] };
+  }
+});
+http("myRequest", {
+  methods:["GET"], authLevel:"anonymous", route:"my-requests/{id}",
+  handler:async req => {
+    const browser = anonymous.identity(req), id = req.params.id;
+    if (!browser.recognized || typeof id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+      return json(404, { error:"Booking not found." });
+    const record = await store.bookings.get(id);
+    if (!record || record.ownerHash !== browser.ownerHash) return json(404, { error:"Booking not found." });
+    return { ...json(200, anonymous.detail(record)), cookies:[anonymous.cookie(req, browser.token)] };
   }
 });
 
@@ -155,7 +184,7 @@ http("bookingItem", {
     next.updatedBy = actor || "admin";
     schema.size(next);
     await store.bookings.put(next);
-    return audited(req, 200, next, "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), actor);
+    return audited(req, 200, anonymous.withoutOwner(next), "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), actor);
   }
 });
 

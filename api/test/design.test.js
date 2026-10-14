@@ -37,6 +37,15 @@ test("public redesign keeps hidden legends and accessible progress while preserv
   assert.doesNotMatch(styles, /opacity:\.65/);
 });
 
+test("hero and progress wrapper have no separating divider while the accessible tracker remains", () => {
+  for (const rule of styles.matchAll(/\.(?:hero|progress-wrap)\s*\{([^}]*)\}/g)) {
+    assert.doesNotMatch(rule[1], /border(?:-bottom)?\s*:/);
+  }
+  assert.match(html, /class="progress" role="progressbar"/);
+  assert.match(html, /id="progressFill"/);
+  assert.match(styles, /\.progress-fill \{[^}]*height:100%;/);
+});
+
 test("My Request is at the top left while admin and theme actions remain right aligned", () => {
   const actions = html.match(/<div class="hero-actions">([\s\S]*?)<\/div>/)[1];
   assert.equal((actions.match(/id="historyBtn"/g) || []).length, 1);

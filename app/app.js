@@ -6,7 +6,7 @@
   const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let submitting = false;
+  let submitting = false, activeQuestionId;
   let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0;
   const choiceObj = c => typeof c === "string" ? { label:c } : c;
   const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
@@ -47,6 +47,7 @@
     while (id && Q[id] && !seen.has(id)) {
       seen.add(id); path.push(id);
       const q = Q[id], opts = (q.choices || []).map(choiceObj);
+      if (q.field === "requestor" && q.required && invalidReason(id)) break;
       if (opts.some(c => c.goto)) {
         if (!isAnswered(id) && q.required) break;
         id = opts.find(c => c.label === valueOf(id))?.goto || q.next;
@@ -158,8 +159,23 @@
       section = next; nodes.push(renderQuestion(id,i+1));
     });
     container.replaceChildren(...nodes);
+    highlightQuestion(active.has(activeQuestionId) ? activeQuestionId : path.find(id => !isAnswered(id)) || path[0]);
     syncOptions(); updateProgress();
   }
+
+  function highlightQuestion(id) {
+    activeQuestionId = id;
+    container.querySelectorAll(".q-card").forEach(card => {
+      const active = card.dataset.id === id;
+      card.classList.toggle("is-active",active);
+      if (active) card.setAttribute("aria-current","step");
+      else card.removeAttribute("aria-current");
+    });
+  }
+  container.addEventListener("focusin",e => {
+    const card = e.target.closest(".q-card");
+    if (card) highlightQuestion(card.dataset.id);
+  });
 
   function goNext(fromId) {
     cancelAuto();
@@ -284,7 +300,16 @@
       clearError(card); updateProgress();
       return;
     } else if (["text", "textarea", "email", "number"].includes(q.type)) {
+      const before = visiblePath().join("|");
       answers[id] = q.type === "number" ? (e.target.value === "" ? "" : e.target.valueAsNumber) : e.target.value;
+      if (before !== visiblePath().join("|")) {
+        const start = e.target.selectionStart, end = e.target.selectionEnd;
+        render();
+        const input = container.querySelector(`[data-id="${id}"] .text-in`);
+        input.focus({ preventScroll:true });
+        if (start !== null && end !== null) input.setSelectionRange(start,end);
+        return;
+      }
       syncOptions();
     }
     clearError(card); updateProgress();
@@ -316,12 +341,14 @@
     answers.date = ds; cancelAuto();
     const card = container.querySelector('[data-id="date"]');
     if (card) card.replaceWith(renderQuestion("date",visiblePath().indexOf("date")+1));
+    highlightQuestion("date");
     loadAvailability(); updateProgress();
     if (validDate(ds)) { error.hidden = true; goNext("date"); }
   }
   container.addEventListener("click",e => {
     if (submitting) return;
     const card = e.target.closest("[data-id]"); if (!card) return;
+    highlightQuestion(card.dataset.id);
     if (e.target.closest(".retry-btn")) { loadAvailability(); return; }
     const date = e.target.closest(".date-tile"); if (date) { setDate(date.dataset.date); return; }
     const chip = e.target.closest(".chip");

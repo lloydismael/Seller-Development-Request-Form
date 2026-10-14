@@ -78,8 +78,50 @@ test("actual renderer validation accepts optional blanks/zero/historical custom 
   r.answers.date = "2026-10-14"; assert.equal(r.invalidReason("date"), "");
 });
 
+test("requestor name gates Sales Division until valid and hides it again when cleared", () => {
+  const r = renderer(config());
+  for (const value of [undefined, "", "   ", "<invalid>", "A".repeat(201)]) {
+    r.answers.name = value;
+    assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
+  }
+  r.answers.name = "Test Requestor";
+  assert.deepEqual(Array.from(r.visiblePath()), ["name", "division"]);
+  r.answers.name = "";
+  assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
+});
+
+test("active question glow follows focus and exposes the current step", () => {
+  const cards = ["name", "division"].map(id => ({
+    dataset:{ id }, classes:new Set(), attributes:{},
+    classList:{ toggle(name, active) { if (active) this.owner.classes.add(name); else this.owner.classes.delete(name); } },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    removeAttribute(name) { delete this.attributes[name]; }
+  }));
+  cards.forEach(card => { card.classList.owner = card; });
+  let focus;
+  const context = { activeQuestionId:undefined, container:{
+    querySelectorAll:() => cards,
+    addEventListener:(type, handler) => { assert.equal(type, "focusin"); focus = handler; }
+  } };
+  vm.runInNewContext(source.slice(source.indexOf("  function highlightQuestion("), source.indexOf("  function goNext(")), context);
+  context.highlightQuestion("name");
+  assert.ok(cards[0].classes.has("is-active"));
+  assert.equal(cards[0].attributes["aria-current"], "step");
+  focus({ target:{ closest:() => cards[1] } });
+  assert.ok(!cards[0].classes.has("is-active"));
+  assert.equal(cards[0].attributes["aria-current"], undefined);
+  assert.ok(cards[1].classes.has("is-active"));
+  assert.equal(cards[1].attributes["aria-current"], "step");
+});
+
+test("optional requestor does not block configured routing", () => {
+  const c = config(); c.questions.name.required = false;
+  assert.deepEqual(Array.from(renderer(c).visiblePath()), ["name", "division"]);
+});
+
 test("actual renderer follows scheduling graph rather than editable presentation order", () => {
   const c = config(); c.order.reverse(); const r = renderer(schema.validate(c));
+  r.answers.name = "Test Requestor";
   r.answers.division = "LG Division"; r.answers.category = c.questions.category.choices[0].label;
   const path = Array.from(r.visiblePath());
   assert.ok(path.indexOf("date") < path.indexOf("facilitator"));

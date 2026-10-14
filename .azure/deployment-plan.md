@@ -1,6 +1,6 @@
 # Production API route restoration
 
-Status: Validated
+Status: Deployed
 
 ## 1. Scope and approval
 User approved deployment of the current API to the existing Function App and creation of this checklist on 2026-10-14. Code-only update; no infrastructure provisioning, authentication changes, storage configuration changes, migrations, stored-form overwrite, or frontend deployment.
@@ -62,3 +62,27 @@ All validation checks passed; code-only deployment completed:
 Release result: verified ZIP SHA256 9B654311BB694E36E1AAB20476E4081BC3ABFA50CF6CEA7F716DD213C51565B4 (14 entries, 33,230 bytes) published with remote build; CLI exit 0, deployment ID aa7fe003-0e4c-45db-962d-4e3240551c3b. All 17 functions registered, including myRequests and myRequest. On the custom HTTPS domain, new identity history returned 200/empty, returning identity returned recognized:true, cookie Secure/HttpOnly/Strict/path/one-year flags and no-store passed, unknown detail returned 404, and health remained 200/table. Proxy-normalized cookie attribute casing is accepted. Direct backend health/auth-me remained protected even with forged admin headers. Frontend contains My Request and excludes the removed explanation. No bookings created, private records read, credentials exposed or settings/roles/resources changed.
 
 Packaging regression fix: repository build now invokes the exported asset builder rather than only loading the module; actual manifest-build regression verifies canonical asset refresh. All 52 focused history/auth/transport/packaging tests passed. Persistent read-only smoke tooling added for future linked-API releases. Backend CI publication remains unconfigured pending approved deployment authorization; frontend api_location stays empty. Production submission-to-history testing was not performed because creating production records is outside approval.
+
+## 10. Compatible schema repair (current release)
+
+### Deployment and live verification
+- User reconfirmed Primary Subscription (2a77b3d9-39da-4b42-8219-c6fd9b8a6165), existing func-booking-prod-8941 in southeastasia, code-only scope.
+- Verified ZIP deployed through config-zip with remote build; CLI exit 0. Active deployment 079e1d14-1037-4703-995f-67f348756c91, status 4 (success), completed 2026-10-14T23:03:58.5778088Z.
+- Both custom and default SWA origins: health 200/table; form-config 200 with current-schema validation; anonymous manage/form-draft 401.
+- Saved draft/published aggregate ETag and SHA256 exactly match predeployment baseline; no saved form content changed.
+- Direct backend health and forged-admin auth/me requests remain 401. Node22/Running/SystemAssigned and platform authentication enabled/required/Return401/SWA provider unchanged.
+- Live role verification passed: runtime Storage Blob Data Owner and Table Data Contributor; application Storage Table Data Contributor; Insights Monitoring Metrics Publisher. No resources, roles, settings or authentication changed.
+- Authenticated admin browser refresh remains a manual check; no production sign-in attempted. Draft loading with persisted glass properties passes packaged-backend regression.
+
+User approved code-only deployment to the existing Function App, preserving all forms, settings, authentication and resources. Frontend glass schema was released after the active backend; saved draft/published state validates with current schema but fails the pre-glass schema. Health is 200/table while form-config is 503.
+All validation checks pass checklist:
+- Core: authenticated CLI, explicit subscription, Running/node22 target, manifest/lock consistency, build, targeted tests and verified source-only ZIP.
+- ARM validate/what-if, Docker and provisioning policy: not applicable; no infrastructure or configuration changes.
+- Static roles and platform authentication: verify unchanged existing managed identity assignments and auth boundary.
+- Post-deploy: both SWA origins return validated published form; persisted form-state hash/ETag unchanged; anonymous private routes and direct backend remain protected.
+
+### Section 7 current schema repair validation proof
+- npm run build passed; forms/form-routes/packaging/glass-settings/api-auth: 35 tests passed, zero failures. API-only persisted glass draft/published regression passes.
+- Manifest/lock structural equality and canonical asset equality passed. ZIP exact 14-entry inventory/hashes verified, 33,434 bytes, SHA256 996805217729596026C3E378DDD2320702C3D9866356A5B077FC555082AB0537; api-schema-release-b849c955edc74649bed9621d57730a24/api.zip.
+- Explicit target Running/node22; authenticated Enabled subscription. Static role declarations match live four managed identity roles. Platform authentication enabled/required/Return401/SWA enabled; direct anonymous and forged-admin requests both 401.
+- Existing saved draft/published validate; predeploy state hash/ETag recorded privately, no content copied. No settings/roles/resources or data changed. No infrastructure/Docker validation applicable to this approved code-only deployment. Bash authoritative workflow used for PowerShell 5 compatibility.

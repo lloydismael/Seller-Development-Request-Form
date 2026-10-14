@@ -75,7 +75,15 @@ test("API-only package loads real forms and registers/invokes routes without out
     (async () => {
       const forms = require('./src/forms');
       require('./src/functions/api');
-      const live = await forms.published(); assert.ok(live.version); assert.equal(live.config.questions.participants.type,'number');
+      const assets = require('./src/form-assets-loader');
+      const config = assets.schema.validate(assets.defaults);
+      Object.assign(config.theme, { glassEnabled:true, glassTransparency:35, glassBlur:18 });
+      assets.schema.validate(config);
+      rows.set('form-state', { value:{ id:'form-state', draft:{ config, revision:'draft-glass' },
+        published:{ config, version:'published-glass' } }, version:'stored-glass' });
+      const live = await forms.published();
+      assert.equal(live.config.theme.glassEnabled,true);
+      assert.equal((await forms.draft()).config.theme.glassBlur,18); assert.ok(live.version); assert.equal(live.config.questions.participants.type,'number');
       assert.equal((await forms.draft()).version,live.version);
       assert.ok(handlers.has('authProfile')); assert.ok(handlers.has('formPublish')); assert.ok(handlers.has('activity'));
       const result = await handlers.get('formConfig')({ method:'GET' });

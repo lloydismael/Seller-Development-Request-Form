@@ -53,8 +53,9 @@ invalidating an answer hides the button again. Draft previews never enable submi
 
 ## Anonymous request history
 
-**My requests** in the public header and submission confirmation shows this browser's
-requests, newest first, with pagination, current status and read-only submitted answers.
+**My Request** at the top right of the public header opens this browser's previous
+and newly created requests, newest first, with pagination, current status and read-only
+submitted answers. The submission confirmation also provides **View my requests**.
 No login or physical-device fingerprinting is used. A server-generated HttpOnly,
 SameSite=Strict cookie scoped to `/api` grants access for one year, renewed on return;
 production uses Secure cookies. Only the token hash is stored with each new request.

@@ -37,6 +37,16 @@ test("public redesign keeps hidden legends and accessible progress while preserv
   assert.doesNotMatch(styles, /opacity:\.65/);
 });
 
+test("My Request is the rightmost header action and opens the history dialog", () => {
+  const actions = html.match(/<div class="hero-actions">([\s\S]*?)<\/div>/)[1];
+  assert.equal((actions.match(/id="historyBtn"/g) || []).length, 1);
+  assert.match(actions, /<button class="btn" id="historyBtn" type="button" aria-haspopup="dialog" aria-controls="requestHistory">My Request<\/button>\s*$/);
+  assert.ok(actions.indexOf('class="admin-btn"') < actions.indexOf('id="themeToggle"'));
+  assert.ok(actions.indexOf('id="themeToggle"') < actions.indexOf('id="historyBtn"'));
+  assert.match(styles, /\.hero-actions \{ position:absolute; top:16px; right:20px; display:flex;/);
+  assert.match(styles, /\.hero-actions \{ left:12px; justify-content:flex-end; flex-wrap:wrap; \}/);
+});
+
 test("initial name section is centered in the available viewport without a blank submit bar", () => {
   assert.match(styles, /body\.form-start \{[^}]*min-height:100dvh;[^}]*display:flex;[^}]*flex-direction:column;/);
   assert.match(styles, /\.form-start \.wrap \{[^}]*flex:1;[^}]*width:100%;[^}]*justify-content:center;/);

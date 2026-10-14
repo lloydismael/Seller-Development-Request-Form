@@ -38,7 +38,8 @@ function renderer(config) {
 
 test("renderer applies and clears glass through validated theme tokens", () => {
   const properties = {}, root = { dataset:{}, style:{ setProperty:(key, value) => { properties[key] = value; } } };
-  const context = { document:{ documentElement:root } };
+  const context = { preview:false, document:{ documentElement:root }, window:{ addEventListener:() => {} } };
+  vm.runInNewContext(fs.readFileSync(require.resolve("../../app/appearance.js"), "utf8"), context);
   vm.runInNewContext(source.slice(source.indexOf("  function applyTheme("), source.indexOf("  async function loadForm(")), context);
   const theme = schema.validate(defaults).theme;
   context.applyTheme(theme);
@@ -52,6 +53,74 @@ test("renderer applies and clears glass through validated theme tokens", () => {
   assert.equal(properties["--glass-blur"], "20px");
   theme.glassEnabled = false; context.applyTheme(theme);
   assert.equal(root.dataset.glass, "disabled");
+});
+
+test("booking loads only published palettes and keeps them through mode switches and reloads", async () => {
+  const { harness } = require("./api-harness");
+  const api = harness(), token = await api.login();
+  const initial = await api.handlers.get("formDraft")(api.request("GET", null, token));
+  const draft = structuredClone(initial.jsonBody.config);
+  Object.assign(draft.theme, { primary:"#1d4ed8", background:"#eff6ff", darkPrimary:"#fda4af", darkBackground:"#27151d" });
+  const saved = await api.handlers.get("formDraft")(api.request("PUT", { config:draft, revision:initial.jsonBody.revision }, token));
+  assert.equal(saved.status, 200);
+  const values = {}, nodes = {}, events = {}, storage = { "booking-color-mode":"light" };
+  const root = { dataset:{ waitForAppearance:"true" }, classList:{ add:() => {}, remove:() => {} }, style:{ setProperty:(key, value) => { values[key] = value; } } };
+  const node = id => nodes[id] ||= { hidden:false, setAttribute:() => {}, addEventListener:(type, fn) => { events[`${id}:${type}`] = fn; } };
+  const context = {
+    document:{ documentElement:root, getElementById:node, addEventListener:(type, fn) => { events[type] = fn; } },
+    window:{ matchMedia:() => ({ matches:false, addEventListener:() => {} }), addEventListener:() => {} },
+    localStorage:{ getItem:key => storage[key] || null, setItem:(key, value) => { storage[key] = value; } },
+    clearTimeout:() => {}, setTimeout:() => 1,
+    schema, preview:false, loading:false, submitting:false, loaded:false, requestVersion:0,
+    answers:{}, otherText:{}, form:node("form"), submit:node("submit"), error:node("error"),
+    cancelAuto:() => {}, container:{ replaceChildren:() => {} }, render:() => { assert.ok(values["--ui-bg"]); },
+    S:{ formConfig:async () => (await api.handlers.get("formConfig")(api.request("GET"))).jsonBody,
+      formDraft:() => { throw new Error("Public booking must not fetch drafts"); } }
+  };
+  vm.runInNewContext(fs.readFileSync(require.resolve("../../app/appearance.js"), "utf8"), context);
+  vm.runInNewContext(fs.readFileSync(require.resolve("../../app/theme.js"), "utf8"), context);
+  events.DOMContentLoaded();
+  vm.runInNewContext(source.slice(source.indexOf("  function applyTheme("), source.indexOf('  document.getElementById("retryFormBtn")')), context);
+  assert.equal(root.dataset.appearanceLoading, "true");
+  await context.loadForm();
+  assert.equal(root.dataset.appearanceLoading, "false");
+  assert.equal(context.loaded, true);
+  assert.equal(values["--ui-bg"], initial.jsonBody.config.theme.background);
+  const published = await api.handlers.get("formPublish")(api.request("POST", { revision:saved.jsonBody.revision }, token));
+  assert.equal(published.status, 200);
+  await context.loadForm();
+  assert.equal(context.loaded, true);
+  assert.equal(context.formVersion, published.jsonBody.version);
+  assert.equal(values["--ui-bg"], draft.theme.background);
+  for (let i = 0; i < 4; i++) {
+    events["themeToggle:click"]();
+    assert.equal(root.dataset.colorMode, i % 2 === 0 ? "dark" : "light");
+    assert.equal(values["--ui-bg"], i % 2 === 0 ? draft.theme.darkBackground : draft.theme.background);
+    const expected = context.window.BookingAppearance.palette(draft.theme, root.dataset.colorMode);
+    assert.equal(values["--ui-bg"], expected["--ui-bg"]);
+    assert.equal(values["--ui-primary"], expected["--ui-primary"]);
+    await context.loadForm();
+    assert.equal(context.loaded, true);
+    assert.equal(values["--ui-bg"], expected["--ui-bg"]);
+    assert.equal(values["--ui-primary"], expected["--ui-primary"]);
+  }
+  const publishedCache = storage["booking-published-palette-v1"];
+  context.preview = true;
+  context.S.formDraft = async () => ({ version:"draft", revision:"draft-revision", config:initial.jsonBody.config });
+  await context.loadForm();
+  assert.equal(context.loaded, true);
+  assert.equal(values["--ui-bg"], initial.jsonBody.config.theme.background);
+  assert.equal(storage["booking-published-palette-v1"], publishedCache);
+  context.preview = false;
+  for (const formConfig of [async () => { throw new Error("Network unavailable"); }, async () => ({ version:"" })]) {
+    context.S.formConfig = formConfig;
+    root.dataset.appearanceLoading = "true";
+    await context.loadForm();
+    assert.equal(context.loaded, false);
+    assert.equal(root.dataset.appearanceLoading, "false");
+    assert.equal(nodes.retryFormBtn.hidden, false);
+    assert.equal(storage["booking-published-palette-v1"], publishedCache);
+  }
 });
 
 function config() {

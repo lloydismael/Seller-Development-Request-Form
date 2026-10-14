@@ -5,7 +5,7 @@
   const answers = {}, otherText = {};
   const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const reducedMotion = { get matches() { return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.reduceMotion === "true"; } };
   let submitting = false, activeQuestionId, requestorComplete = false;
   let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0, confirmationVersion = 0;
   const choiceObj = c => typeof c === "string" ? { label:c } : c;
@@ -453,15 +453,8 @@
   function applyTheme(theme) {
     // Tokens have passed FormSchema.validate. No arbitrary style declarations.
     const root = document.documentElement;
-    root.style.setProperty("--primary", theme.primary);
-    root.style.setProperty("--primary-2", theme.primary);
-    root.style.setProperty("--bg", theme.background);
-    const rgb = theme.primary.slice(1).match(/../g).map(c => parseInt(c,16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
-    root.style.setProperty("--primary-ink", .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2] > .179 ? "#111827" : "#ffffff");
     root.dataset.density = theme.density; root.dataset.width = theme.width; root.dataset.cardStyle = theme.cardStyle;
-    root.dataset.glass = theme.glassEnabled ? "enabled" : "disabled";
-    root.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
-    root.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
+    window.BookingAppearance.apply(theme, { published:!preview });
   }
   async function loadForm() {
     if (loading || submitting) return;
@@ -489,7 +482,7 @@
       loaded = false; container.replaceChildren();
       message.textContent = `The ${preview ? "authenticated draft" : "published form"} could not be loaded: ${err.message} The form is unavailable until loading succeeds.`;
       retry.hidden = false;
-    } finally { loading = false; panel.setAttribute("aria-busy","false"); }
+    } finally { loading = false; panel.setAttribute("aria-busy","false"); window.BookingAppearance?.reveal(); }
   }
   document.getElementById("retryFormBtn").addEventListener("click",loadForm);
   document.getElementById("refreshFormBtn").addEventListener("click",loadForm);

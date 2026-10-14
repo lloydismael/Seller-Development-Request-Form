@@ -89,7 +89,7 @@ changes across same-origin pages, including draft previews. If storage is unavai
 the switch still works for the current page.
 
 The admin portal uses a desktop sidebar and expandable mobile navigation, retaining
-all eight destinations and unsaved-draft protections. The theme switch is available
+all nine destinations and unsaved-draft protections. The theme switch is available
 both at login and within the portal. Published form accent/background choices remain
 unchanged; light mode respects those settings, while dark mode uses accessible viewer
 colors without saving changes to the form. The teal bootstrap default applies only to
@@ -98,18 +98,53 @@ Public action buttons use compact padding while retaining 44px minimum touch hei
 option tiles and full-width mobile submission remain unchanged.
 No external fonts, UI framework, or additional runtime dependency is needed.
 
-### Optional frosted glass
+### Liquid Glass-inspired appearance and Settings
 
-In **Admin → Settings → Form settings → Subtle frosted glass**, enable the
-restrained glass treatment for the public header, progress tracker, question cards,
-and My Request dialog. Existing and new forms default to **disabled**, with a preset
+**Admin → Settings → Appearance** offers **Liquid glass** (40% transparency,
+4px blur), **Frosted glass** (20% transparency, 16px blur), and **Solid** presets.
+The shared material treatment covers public and admin surfaces, with rounded controls
+and reflective depth. Fine-tune transparency and blur in **Form Builder**. Existing and new forms default to **disabled**, with a preset
 of **20% transparency and 12px frost blur**. Transparency accepts 0–40%; blur accepts
 0–20px. Readability caps effective transparency at 20% in light mode and 10% in dark
 mode, regardless of the configured background. Text, inputs, actions and status
 feedback remain opaque. **Reset and disable glass** restores the preset and disables
 it without changing other appearance settings.
 
-Use **Save draft → Preview → Publish** to apply changes. Unsupported browsers,
+Settings also offers independent **light and dark color palettes**, with Teal, Ocean,
+Violet and Rose presets, custom accent/background color pickers, and side-by-side
+previews. Unpublished color edits preview only inside Settings, and the light/dark
+switch selects the corresponding draft palette. Leaving Settings restores the published
+palette without changing the selected mode. All other admin tabs and the booking page
+use the same published colors. Saved drafts remain available when Settings is reopened;
+discarding unsaved changes preserves the saved draft. Publishing applies the new palettes
+everywhere. Visitors retain their own mode preferences.
+After publishing, loading or refreshing the booking page applies both published palettes
+globally, including the header, form cards, controls and keyboard focus indicators.
+Both entry points restore the last published light/dark palettes from a same-origin browser
+cache before styles load. They briefly wait for fresh validated configuration before revealing
+the page (up to 1.5 seconds), releasing immediately on success or failure. Slow or failed
+loads fall back to cached colors, or defaults if storage is unavailable; a later successful
+response remains authoritative. Different origins have separate caches. Settings previews
+and authenticated draft previews never overwrite the published palette cache.
+Saving a draft alone does not change the public booking page; already-open visitor pages
+receive published updates on their next load or refresh. Text, surfaces, focus and button colors adapt for
+contrast; accents may be adjusted and custom glass made more opaque for readability. Legacy forms retain the default
+dark palette. Custom colors accept six-digit hex values; optional `darkPrimary` and
+`darkBackground` extend the existing light `primary` and `background` fields.
+
+**Page layout & style** controls comfortable/compact spacing, narrow/standard/wide
+content width, and outlined/elevated/flat cards across the booking page and every admin
+tab. Layout remains responsive and unchanged when switching light/dark modes. These
+controls share the Form Builder theme fields; unsaved choices update only the Settings
+sample, not the live application.
+
+Use **Save draft → Preview form → Publish** to apply changes. These actions save or
+publish the **entire form draft**, not just appearance. Saving alone does not change
+the live site. Settings also provides scheduling safeguards, facilitator management,
+CSV export, activity and account shortcuts. **Reduce motion** and **Reduce transparency**
+are browser-local preferences shared across same-origin pages, not global admin changes.
+They remain available in local mode; shared appearance requires the authenticated API.
+Unsupported browsers,
 reduced-transparency preferences and forced-colors mode retain solid surfaces;
 Safari uses the prefixed backdrop-filter enhancement. Existing reduced-motion and
 keyboard-focus behavior is preserved. Release the frontend and packaged API shared
@@ -127,6 +162,12 @@ will reject the new appearance fields.
 | My profile | Update your display name, email and phone; local accounts can change their password |
 | Form builder | Edit validated questions, sections, choices, routing and theme; save draft, read-only preview and publish |
 | Activity log | Admin-only operational history with action/date filters and paginated results |
+| Settings | Shared glass materials, light/dark color presets and custom palettes, application spacing/width/card style, browser-local accessibility preferences, scheduling safeguards and team/data/account shortcuts |
+
+### Form builder
+Select a numbered question to edit its label, answer type and hints. Advanced options stay under **Question routing**, **Choice routing**, **Form settings** and **Sections**. Apply choice edits before saving; unavailable move controls protect existing routes. Required booking fields cannot be removed or made optional.
+
+Use **Save draft → Preview → Publish**. Saving does not change the live form; publishing makes the saved draft available to new requests. **Reload draft** discards unsaved edits after confirmation.
 
 Rules: a facilitator cannot have overlapping active bookings (Pending/Approved/Completed). Rejected/Cancelled
 bookings free the slot. The public form disables booked slots and the API rejects conflicts (HTTP 409).

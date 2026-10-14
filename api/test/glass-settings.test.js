@@ -49,6 +49,6 @@ test("glass appearance controls have native bounds and explicit fallback/reset h
   assert.match(markup, /type="number" data-theme="glassTransparency"[^>]*min="0" max="40"/);
   assert.match(markup, /type="number" data-theme="glassBlur"[^>]*min="0" max="20"/);
   assert.equal((markup.match(/aria-describedby="glassHelp" disabled/g) || []).length, 2);
-  assert.match(source, /Readability limits effective transparency to 20% in light mode and 10% in dark mode/);
+  assert.match(source, /Transparency is capped at 20% in light mode and 10% in dark mode/);
   assert.match(source, /Reset and disable glass/);
 });

@@ -4,6 +4,7 @@
   let Q, FACS = [], TIMES = [], CATS = [], VENUES = [], sourceConfig;
   function applyConfig(config) {
     sourceConfig = window.FormSchema.validate(config);
+    window.BookingAppearance.apply(sourceConfig.theme);
     Q = sourceConfig.questions;
     const choices = field => Object.values(Q).filter(q => q.field === field).flatMap(q => (q.choices || []).map(choiceLabel));
     FACS = [...new Set(choices("facilitator"))]; TIMES = [...new Set(choices("time"))];
@@ -121,7 +122,8 @@
     blocks: ["Blocked dates", "Keep availability accurate with leave, holidays and other commitments."],
     profile: ["My profile", "Your account details and security, in one place."],
     builder: ["Form builder", "Shape the booking experience with safe drafts and publishing."],
-    activity: ["Activity log", "Follow changes across bookings, accounts and your booking form."]
+    activity: ["Activity log", "Follow changes across bookings, accounts and your booking form."],
+    settings: ["Settings", "Personalize shared appearance and find your workspace preferences and tools."]
   };
   function closeNavigation(restoreFocus = false) {
     $(".topbar").classList.remove("nav-open");
@@ -139,6 +141,9 @@
   let user, identity;
   try {
     mode = await S.mode();
+    try { applyConfig(mode === "api" ? (await S.formConfig()).config : window.FORM_CONFIG); }
+    catch { /* initialize offers configuration retry after sign-in. */ }
+    finally { window.BookingAppearance?.reveal(); }
     identity = await S.me(); user = identity.user;
   }
   catch (err) {
@@ -155,7 +160,7 @@
     $("#loginForm").onsubmit = e => { e.preventDefault(); location.reload(); };
     $("#loginBtn").textContent = "Retry connection";
     return;
-  }
+  } finally { window.BookingAppearance?.reveal(); }
   if (!user) { identity = await showLogin(); user = identity.user; }
   $("#app").hidden = false;
   $("#userName").textContent = identity.profile?.displayName || user;
@@ -179,7 +184,10 @@
     st.tab = b.dataset.tab; render(); closeNavigation();
     $("#view").focus();
   }));
-  $(".user a").onclick = e => { if (!window.SettingsUI.canLeave()) e.preventDefault(); };
+  $(".user a").onclick = e => {
+    if (!window.SettingsUI.canLeave()) { e.preventDefault(); return; }
+    window.SettingsUI.deactivate();
+  };
 
   $("#view").addEventListener("click", async e => {
     const t = e.target.closest("[data-act],[data-open],[data-day],[data-nav],[data-wnav],[data-delblock]");
@@ -223,8 +231,8 @@
       if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     const v = $("#view");
-    if (["profile", "builder", "activity"].includes(st.tab)) {
-      window.SettingsUI.render(st.tab, v, { S, toast, mode, onPublished: result => applyConfig(result.config),
+    if (["profile", "builder", "activity", "settings"].includes(st.tab)) {
+      window.SettingsUI.render(st.tab, v, { S, toast, mode, config:sourceConfig, navigate: tab => document.querySelector(`[data-tab="${tab}"]`).click(), onPublished: result => applyConfig(result.config),
         onProfile: account => { $("#userName").textContent = account.profile?.displayName || account.user; } });
       return;
     }
@@ -591,7 +599,7 @@
 
   async function initialize() {
     try {
-      applyConfig(mode === "api" ? (await S.formConfig()).config : window.FORM_CONFIG);
+      if (!sourceConfig) applyConfig(mode === "api" ? (await S.formConfig()).config : window.FORM_CONFIG);
       await reload();
     } catch (err) {
       $("#view").innerHTML = `<div class="alert" role="alert">Could not load form configuration: ${esc(err.message)}. No default configuration was substituted.</div><button class="btn" id="retryConfig">Retry configuration</button>`;

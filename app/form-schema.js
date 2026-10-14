@@ -65,7 +65,10 @@
       if (s.description !== undefined) v.description = text(s.description, 1000, true);
       return v;
     });
-    keys(out.theme, ["primary", "background", "density", "width", "cardStyle", ...Object.keys(GLASS_DEFAULTS)]);
+    keys(out.theme, ["primary", "background", "darkPrimary", "darkBackground", "density", "width", "cardStyle", ...Object.keys(GLASS_DEFAULTS)]);
+    for (const key of ["darkPrimary", "darkBackground"]) {
+      if (out.theme[key] !== undefined && (typeof out.theme[key] !== "string" || !/^#[0-9a-f]{6}$/i.test(out.theme[key]))) fail("Invalid theme color: " + key);
+    }
     if (![out.theme.primary, out.theme.background].every(v => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) ||
         !["compact", "comfortable"].includes(out.theme.density) || !["narrow", "standard", "wide"].includes(out.theme.width) ||
         !["outlined", "elevated", "flat"].includes(out.theme.cardStyle)) fail("Invalid theme tokens.");

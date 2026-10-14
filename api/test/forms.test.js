@@ -47,6 +47,19 @@ test("glass settings normalize legacy themes without mutation and reject invalid
   assert.deepEqual(clone(browser.window.FormSchema.validate(c)), schema.validate(c));
 });
 
+test("independent dark colors validate without changing legacy themes or allowing arbitrary CSS", () => {
+  const c = config();
+  assert.equal(c.theme.darkPrimary, undefined);
+  Object.assign(c.theme, { darkPrimary:"#aAbBcC", darkBackground:"#102030" });
+  assert.deepEqual(schema.validate(c).theme, c.theme);
+  const packaged = require("../src/form-assets/form-schema");
+  assert.deepEqual(packaged.validate(c), schema.validate(c));
+  for (const key of ["darkPrimary", "darkBackground"]) for (const value of [null, 42, "#fff", "red", "url(bad)", "#abcdef00"]) {
+    const bad = clone(c); bad.theme[key] = value;
+    assert.throws(() => schema.validate(bad), { statusCode:400 });
+  }
+});
+
 test("schema rejects unsafe keys, bounds, HTML/CSS, cycles, unreachable nodes and skipped essentials", () => {
   const changes = [
     c => { c.questions.name.next = "missing"; }, c => { c.questions.time.next = "name"; },

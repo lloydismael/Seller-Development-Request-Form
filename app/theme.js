@@ -8,6 +8,7 @@
   if (!["light", "dark"].includes(preference)) preference = null;
   const apply = mode => {
     root.dataset.colorMode = mode;
+    window.BookingAppearance?.refreshColors();
     document.getElementById("themeToggle")?.setAttribute("aria-checked", String(mode === "dark"));
   };
   apply(preference || (system.matches ? "dark" : "light"));
@@ -26,7 +27,7 @@
     let timer;
     toggle.addEventListener("click", () => {
       preference = root.dataset.colorMode === "dark" ? "light" : "dark";
-      if (!reducedMotion.matches) {
+      if (!reducedMotion.matches && root.dataset.reduceMotion !== "true") {
         clearTimeout(timer);
         root.classList.add("theme-switching");
         timer = setTimeout(() => root.classList.remove("theme-switching"), 500);

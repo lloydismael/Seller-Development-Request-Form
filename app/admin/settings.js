@@ -7,6 +7,7 @@
   const label = c => typeof c === "string" ? c : c.label;
   const option = (value, title, selected) => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(title)}</option>`;
   const select = (values, selected) => values.map(v => option(v, v, selected)).join("");
+  const typeNames = { text:"Short text", textarea:"Long text", email:"Email", number:"Number", date:"Date", choice:"Single choice", multi:"Multiple choice" };
   const actions = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish"];
   let activeTab = "", generation = 0, busy = false, profileDirty = false;
   let draft = null, saved = "", selected = "", previewOpen = false;
@@ -18,11 +19,17 @@
     if (busy) { alert("Please wait for the current request to finish."); return false; }
     if (!dirty()) return true;
     if (!confirm("Discard unsaved changes and leave this tab? Saved drafts are not affected.")) return false;
-    if (draft && saved) draft.config = JSON.parse(saved);
+    if (draft && saved) {
+      draft.config = JSON.parse(saved);
+      if (activeTab === "settings") window.BookingAppearance.previewColors(draft.config.theme);
+    }
     profileDirty = false; previewOpen = false;
     return true;
   }
-  function deactivate() { activeTab = ""; generation++; }
+  function deactivate() {
+    window.BookingAppearance.clearColorPreview();
+    activeTab = ""; generation++;
+  }
   function warning(view, result) {
     if (result?.auditRecorded !== false) return;
     const el = document.createElement("div"); el.className = "alert"; el.setAttribute("role", "alert");
@@ -51,7 +58,9 @@
     }
   }
   async function render(tab, view, context) {
+    window.BookingAppearance.clearColorPreview();
     activeTab = tab; const token = ++generation;
+    if (context.mode !== "api" && tab === "settings") { settings(view, context); return; }
     if (context.mode !== "api") {
       view.innerHTML = `<section class="panel settings-unavailable"><span class="state-mark" aria-hidden="true">◎</span><h2>${esc({ profile:"My profile", builder:"Form builder", activity:"Activity log" }[tab])}</h2><p class="muted">These settings require the authenticated API. Account changes, drafts and publishing are not available in local storage mode.</p></section>`;
       return;
@@ -61,13 +70,13 @@
       if (tab === "profile") {
         const identity = await context.S.profile();
         if (token === generation && activeTab === tab) profile(view, context, identity);
-      } else if (tab === "builder") {
+      } else if (tab === "builder" || tab === "settings") {
         if (!draft) {
           const result = await context.S.formDraft();
           if (token !== generation) return;
           adoptDraft(result);
         }
-        if (token === generation && activeTab === tab) builder(view, context);
+        if (token === generation && activeTab === tab) (tab === "settings" ? settings : builder)(view, context);
       } else {
         const result = await context.S.activity({ ...activityQuery });
         if (token === generation && activeTab === tab) activity(view, context, result);
@@ -77,6 +86,130 @@
       view.innerHTML = '<section class="panel"><h2>Settings unavailable</h2><button type="button" class="btn settings-retry">Retry</button></section>';
       error(view, err); view.querySelector(".settings-retry").onclick = () => render(tab, view, context);
     }
+  }
+
+  const colorPresets = {
+    light: { teal:["#0f766e", "#f8fafc"], ocean:["#1d4ed8", "#eff6ff"], violet:["#7c3aed", "#faf5ff"], rose:["#be185d", "#fff1f2"] },
+    dark: { teal:["#5eead4", "#0f172a"], ocean:["#93c5fd", "#0c182e"], violet:["#c4b5fd", "#1c142b"], rose:["#fda4af", "#27151d"] }
+  };
+  function settings(view, ctx) {
+    const available = ctx.mode === "api";
+    const cfg = available ? draft.config : null;
+    const theme = cfg?.theme || ctx.config?.theme || schema.GLASS_DEFAULTS;
+    const colorValue = (mode, kind) => theme[mode === "dark" ? kind === "primary" ? "darkPrimary" : "darkBackground" : kind] || colorPresets[mode].teal[kind === "primary" ? 0 : 1];
+    const selectedPreset = mode => Object.keys(colorPresets[mode]).find(key => colorPresets[mode][key].every((color, i) => color === colorValue(mode, i ? "background" : "primary").toLowerCase())) || "custom";
+    const style = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
+    const preferences = window.BookingAppearance.preferences();
+    const facilitators = [...new Set(Object.values(cfg?.questions || ctx.config?.questions || {}).filter(q => q.field === "facilitator").flatMap(q => (q.choices || []).map(label)))];
+    view.innerHTML = `<div class="settings-grid preferences-grid">
+      <section class="panel appearance-panel"><p class="eyebrow">Shared experience</p><h2>Appearance</h2><p class="muted">Choose the material for the booking form and admin workspace. Save and publish to make it live for everyone.</p>
+        ${!available ? '<p class="alert">Shared appearance requires the authenticated API. Browser preferences below still work.</p>' : ""}
+        <fieldset class="material-options" ${available ? "" : "disabled"}><legend>Surface material</legend>
+          ${[["liquid", "Liquid glass", "Clear reflections · light blur"], ["frosted", "Frosted glass", "Soft diffusion · deeper blur"], ["solid", "Solid", "Opaque · no glass effect"]].map(([value, title, detail]) => `<label class="material-option"><input type="radio" name="material" value="${value}" ${style === value ? "checked" : ""}><span class="material-swatch ${value}" aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
+        </fieldset><p class="muted small">Readable surfaces are capped at 20% transparency in light mode and 10% in dark mode. Your browser's accessibility preferences always take priority.</p>
+        <div class="material-preview" aria-label="Material preview"><span class="eyebrow">Preview only</span><h3>Your next learning session</h3><p>Clear details. Comfortable reading. A little more depth.</p><span class="badge">Ready to plan</span></div>
+        <h3>Application colors</h3><p class="muted small">Customize light and dark mode independently. Unpublished colors preview only in Settings; use the page switch to check each mode. Other admin tabs and the booking page use the same published colors. Save the draft to keep your edits, then publish to apply them everywhere. Accents are adjusted when needed for readable text and buttons.</p>
+        <div class="palette-grid">${["light", "dark"].map(mode => `<fieldset class="palette-editor" ${available ? "" : "disabled"}><legend>${mode === "light" ? "Light" : "Dark"} mode</legend>
+          <label for="${mode}Preset">Color preset</label><select id="${mode}Preset" data-palette-preset="${mode}">${Object.keys(colorPresets[mode]).map(key => `<option value="${key}" ${selectedPreset(mode) === key ? "selected" : ""}>${key[0].toUpperCase() + key.slice(1)}</option>`).join("")}<option value="custom" ${selectedPreset(mode) === "custom" ? "selected" : ""}>Custom</option></select>
+          ${["primary", "background"].map(kind => `<label class="palette-color" for="${mode}${kind}"><span>${kind === "primary" ? "Accent" : "Page background"}</span><input type="color" id="${mode}${kind}" data-color-mode="${mode}" data-color-kind="${kind}" value="${esc(colorValue(mode, kind))}"><output id="${mode}${kind}Value">${esc(colorValue(mode, kind))}</output></label>`).join("")}
+          <div class="palette-preview" id="${mode}PalettePreview" aria-label="${mode} color preview"><strong>Your next session</strong><p>Booking details and readable surfaces.</p><span class="palette-preview-button">Continue</span></div>
+        </fieldset>`).join("")}</div>
+        <h3>Page layout &amp; style</h3><p class="muted small">Apply spacing, content width, and card depth to the booking form and every admin tab. Narrow keeps content focused; wide gives dashboards more room. Mobile layouts remain responsive.</p>
+        <fieldset class="layout-editor" ${available ? "" : "disabled"}><legend>Application style</legend>
+          ${[["density", "Spacing", [["comfortable", "Comfortable"], ["compact", "Compact"]]], ["width", "Content width", [["narrow", "Narrow"], ["standard", "Standard"], ["wide", "Wide"]]], ["cardStyle", "Card style", [["outlined", "Outlined"], ["elevated", "Elevated"], ["flat", "Flat"]]]].map(([key, title, values]) => `<label for="appearance${key}">${title}<select id="appearance${key}" data-appearance-style="${key}">${values.map(([value, text]) => option(value, text, theme[key])).join("")}</select></label>`).join("")}
+        </fieldset>
+        <p class="small" id="appearanceStatus" role="status"></p>
+        ${available ? '<div class="settings-actions"><button class="btn primary" id="saveAppearance">Save draft</button><button class="btn" id="previewAppearance">Preview form</button><button class="btn primary" id="publishAppearance">Publish</button><button class="btn" id="reloadAppearance">Reload draft</button></div><p class="muted small">These actions save or publish the entire form draft, including any saved Form Builder changes.</p>' : ""}
+      </section>
+      <section class="panel"><p class="eyebrow">This browser only</p><h2>Accessibility</h2><p class="muted">Personal preferences, not changes for other visitors. System preferences are also respected.</p>
+        <label class="preference-row"><span><strong>Reduce motion</strong><small>Skip decorative transitions and scaling.</small></span><input type="checkbox" data-preference="reduceMotion" ${preferences.reduceMotion ? "checked" : ""}></label>
+        <label class="preference-row"><span><strong>Reduce transparency</strong><small>Use opaque surfaces for easier reading.</small></span><input type="checkbox" data-preference="reduceTransparency" ${preferences.reduceTransparency ? "checked" : ""}></label>
+        <p class="muted small">Use the appearance switch at the top of the page for light or dark mode.</p>
+      </section>
+      <section class="panel"><p class="eyebrow">Scheduling safeguards</p><h2>Booking rules</h2><ul class="settings-list"><li>Overlapping active sessions for the same facilitator are flagged as conflicts.</li><li>Blocked dates keep leave and holidays unavailable.</li><li>Rejected and cancelled requests release their time slots.</li></ul><p class="muted small">These are enforced scheduling rules, not editable toggles.</p><button class="btn" data-settings-nav="blocks">Manage blocked dates</button></section>
+      <section class="panel"><p class="eyebrow">Team &amp; operations</p><h2>Facilitators</h2><p class="muted">${facilitators.length} facilitators in the ${available ? "draft" : "current"} form. Manage the facilitator question's choices in Form Builder; publish to update the live roster.</p><div class="facilitator-chips">${facilitators.map(name => `<span class="badge">${esc(name)}</span>`).join("") || '<p class="muted">No facilitators configured.</p>'}</div><div class="settings-actions"><button class="btn" data-settings-nav="builder">Edit roster in Form Builder</button><button class="btn" data-settings-nav="availability">Check availability</button></div></section>
+      <section class="panel"><p class="eyebrow">Records &amp; accountability</p><h2>Data and account</h2><p class="muted">Export filtered booking records as CSV from Bookings. Review administrative changes in Activity Log, or update your account details.</p><div class="settings-actions"><button class="btn" data-settings-nav="bookings">Bookings &amp; CSV export</button><button class="btn" data-settings-nav="activity">Activity log</button><button class="btn" data-settings-nav="profile">Account &amp; security</button></div></section>
+    </div><section class="panel" id="appearancePreviewPanel" hidden><h2>Saved draft preview</h2><p class="muted">Submissions are disabled.</p><iframe class="draft-preview" title="Saved booking form draft"></iframe></section>`;
+    const find = selector => view.querySelector(selector);
+    function status() {
+      if (available) window.BookingAppearance.previewColors(theme);
+      const changed = dirty();
+      let valid = true;
+      if (available) { try { schema.validate(cfg); } catch { valid = false; } }
+      find("#appearanceStatus").textContent = !available ? "Shared settings are unavailable in local mode." : !valid ? "Fix the form draft validation errors in Form Builder." : changed ? "Unsaved changes — save before previewing or publishing." : `Draft saved · Live version: ${draft.version}`;
+      if (available) {
+        find("#saveAppearance").disabled = !changed || !valid;
+        find("#publishAppearance").disabled = changed || !valid;
+        find("#previewAppearance").disabled = changed || !valid;
+      }
+      const preview = find(".material-preview");
+      preview.dataset.material = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
+      ["density", "width", "cardStyle"].forEach(key => { preview.dataset[key] = theme[key]; });
+      ["light", "dark"].forEach(mode => {
+        find(`#${mode}Preset`).value = selectedPreset(mode);
+        ["primary", "background"].forEach(kind => {
+          find(`#${mode}${kind}`).value = colorValue(mode, kind);
+          find(`#${mode}${kind}Value`).textContent = colorValue(mode, kind);
+        });
+        Object.entries(window.BookingAppearance.palette(theme, mode)).forEach(([key, value]) => find(`#${mode}PalettePreview`).style.setProperty(key, value));
+      });
+    }
+    function colorChanged() { find("#appearancePreviewPanel").hidden = true; status(); }
+    view.querySelectorAll("[data-appearance-style]").forEach(input => { input.onchange = () => {
+      if (!available) return;
+      theme[input.dataset.appearanceStyle] = input.value;
+      colorChanged();
+    }; });
+    view.querySelectorAll("[data-palette-preset]").forEach(input => { input.onchange = () => {
+      if (!available || !colorPresets[input.dataset.palettePreset][input.value]) return;
+      const mode = input.dataset.palettePreset, colors = colorPresets[mode][input.value];
+      Object.assign(theme, mode === "dark" ? { darkPrimary:colors[0], darkBackground:colors[1] } : { primary:colors[0], background:colors[1] });
+      colorChanged();
+    }; });
+    view.querySelectorAll("[data-color-kind]").forEach(input => { input.oninput = () => {
+      if (!available) return;
+      const key = input.dataset.colorMode === "dark" ? input.dataset.colorKind === "primary" ? "darkPrimary" : "darkBackground" : input.dataset.colorKind;
+      theme[key] = input.value;
+      colorChanged();
+    }; });
+    view.querySelectorAll("[data-preference]").forEach(input => { input.onchange = () => window.BookingAppearance.setPreference(input.dataset.preference, input.checked); });
+    view.querySelectorAll("[data-settings-nav]").forEach(button => { button.onclick = () => ctx.navigate(button.dataset.settingsNav); });
+    view.querySelectorAll('[name="material"]').forEach(input => { input.onchange = () => {
+      if (!available || !input.checked) return;
+      Object.assign(theme, { glassEnabled:input.value !== "solid", glassTransparency:input.value === "liquid" ? 40 : 20, glassBlur:input.value === "liquid" ? 4 : 16 });
+      find("#appearancePreviewPanel").hidden = true;
+      status();
+    }; });
+    if (available) {
+      find("#saveAppearance").onclick = () => {
+        let normalized; try { normalized = schema.validate(cfg); } catch (err) { error(view, err); return; }
+        operation(view, async () => {
+          const result = await (ctx.S.saveFormDraft.length >= 2 ? ctx.S.saveFormDraft(normalized, draft.revision) : ctx.S.saveFormDraft({ config:normalized, revision:draft.revision }));
+          adoptDraft(result); settings(view, ctx); ctx.toast("Draft saved; live appearance unchanged"); warning(view, result);
+        });
+      };
+      find("#publishAppearance").onclick = () => {
+        if (dirty()) return;
+        try { schema.validate(cfg); } catch (err) { error(view, err); return; }
+        if (!confirm("Publish the entire saved form draft and appearance for all visitors?")) return;
+        operation(view, async () => {
+          const result = await ctx.S.publishForm(ctx.S.saveFormDraft.length >= 2 ? draft.revision : { revision:draft.revision });
+          adoptDraft({ config:result.config, revision:result.version, version:result.version });
+          ctx.onPublished?.(result); settings(view, ctx); ctx.toast("Shared appearance published"); warning(view, result);
+        });
+      };
+      find("#reloadAppearance").onclick = () => {
+        if (dirty() && !confirm("Discard unsaved edits and reload the server draft?")) return;
+        operation(view, async () => { adoptDraft(await ctx.S.formDraft()); settings(view, ctx); });
+      };
+      find("#previewAppearance").onclick = () => {
+        if (dirty()) return;
+        find("#appearancePreviewPanel").hidden = false;
+        find("iframe").src = "/?preview=draft";
+        find("#appearancePreviewPanel").scrollIntoView({ block:"start" });
+      };
+    }
+    status();
   }
 
   function profile(view, ctx, account) {
@@ -153,15 +286,15 @@
     let i = 1; while (taken.includes(prefix + i)) i++;
     return prefix + i;
   }
-  function destinationOptions(config, current, ownId) {
+  function destinationOptions(config, current, ownId, branch = false) {
     const reaches = (id, target, seen = new Set()) => {
       if (id === target) return true;
       if (!id || seen.has(id)) return false;
       seen.add(id); const q = config.questions[id];
       return !!q && [q.next, ...(q.choices || []).map(c => typeof c === "object" && c.goto)].filter(Boolean).some(next => reaches(next, target, seen));
     };
-    return option("", "Default / end of form", current || "") + config.order.filter(id => !ownId || !reaches(id, ownId))
-      .map(id => option(id, `${config.questions[id].title} (${id})`, current)).join("");
+    return option("", branch ? "Use next question" : "End of form", current || "") + config.order.filter(id => !ownId || !reaches(id, ownId))
+      .map(id => option(id, `${config.order.indexOf(id) + 1}. ${config.questions[id].title}`, current)).join("");
   }
   function linear(q) { return !(q.choices || []).some(c => typeof c === "object" && c.goto); }
   function incoming(config, id) {
@@ -205,43 +338,44 @@
     const cfg = draft.config;
     if (!cfg.questions[selected]) selected = cfg.start;
     const q = cfg.questions[selected], essential = protectedQuestion(q), fixedType = ["date", "facilitator", "time"].includes(selected) || q.field === "participants";
-    view.innerHTML = `<div class="settings-heading"><div><h2>Form builder</h2><p class="muted">Draft changes are private until published. Choice labels are stored answer values.</p></div>
-      <div class="settings-actions"><button type="button" class="btn" id="reloadDraft">Reload draft</button><button type="button" class="btn primary" id="saveDraft">Save draft</button><button type="button" class="btn" id="previewDraft">Preview</button><button type="button" class="btn primary" id="publishForm">Publish</button></div></div>
+    const openPanels = new Set([...view.querySelectorAll("details[open][data-builder-panel]")].map(el => el.dataset.builderPanel));
+    view.innerHTML = `<div class="settings-heading builder-heading"><div><p class="muted">Save a draft, preview it, then publish to make it live.</p></div>
+      <div class="settings-actions"><button type="button" class="btn" id="reloadDraft">Reload draft</button><button type="button" class="btn" id="saveDraft">Save draft</button><button type="button" class="btn" id="previewDraft">Preview</button><button type="button" class="btn primary" id="publishForm">Publish</button></div></div>
       <div class="builder-status" role="status" aria-live="polite" id="builderStatus"></div>
-      <p class="muted small version-info">Draft revision: ${esc(draft.revision)} · Live version: ${esc(draft.version)}</p>
-      <div class="alert settings-validation" id="draftValidation" hidden></div>
+      <div class="alert settings-validation" id="draftValidation" role="alert" hidden></div>
       <div class="builder-layout">
-        <aside class="panel question-list"><h3>Questions</h3><ol>${cfg.order.map(id => `<li><button type="button" class="question-pick ${id === selected ? "selected" : ""}" data-question="${esc(id)}" ${id === selected ? 'aria-current="true"' : ""}><span>${esc(cfg.questions[id].title)}</span><small>${esc(id)} · ${esc(cfg.questions[id].type)}${protectedQuestion(cfg.questions[id]) ? " · essential" : ""}${cfg.start === id ? " · start" : ""}</small></button></li>`).join("")}</ol>
-          <button type="button" class="btn" id="addQuestion">Add after selected</button><p class="muted small">Reorder changes routing only in simple linear segments. Branches and joins are never silently rewired.</p></aside>
-        <section class="panel"><h3>Question inspector</h3><div class="settings-actions inspector-actions"><button type="button" class="btn" id="moveUp">Move up</button><button type="button" class="btn" id="moveDown">Move down</button><button type="button" class="btn" id="duplicateQuestion">Duplicate</button><button type="button" class="btn danger" id="removeQuestion" ${essential ? "disabled" : ""}>Remove</button></div>
-          <p class="muted small">Stable ID: ${esc(selected)}${q.field ? ` · Booking mapping: ${esc(q.field)}` : " · Custom answer"}. ${essential ? "Essential field: removal and optional answers are locked." : ""}</p>
+        <aside class="panel question-list"><h3>Questions <span class="muted small">${cfg.order.length}</span></h3><ol>${cfg.order.map((id, i) => `<li><button type="button" class="question-pick ${id === selected ? "selected" : ""}" data-question="${esc(id)}" ${id === selected ? 'aria-current="true"' : ""}><span>${i + 1}. ${esc(cfg.questions[id].title)}</span><small>${esc(typeNames[cfg.questions[id].type] || cfg.questions[id].type)}${protectedQuestion(cfg.questions[id]) ? " · Required" : ""}${cfg.start === id ? " · First" : ""}</small></button></li>`).join("")}</ol>
+          <button type="button" class="btn" id="addQuestion">Add question</button></aside>
+        <section class="panel question-editor"><h3>Edit question</h3><div class="settings-actions inspector-actions"><button type="button" class="btn" id="moveUp">Move up</button><button type="button" class="btn" id="moveDown">Move down</button><button type="button" class="btn" id="duplicateQuestion">Duplicate</button><button type="button" class="btn danger" id="removeQuestion" ${essential ? "disabled" : ""}>Remove</button></div>
+          ${essential ? '<p class="muted small">Required booking field. Cannot be removed or made optional.</p>' : ""}
           <form class="settings-form" id="inspector">
             <label>Label<input data-prop="title" value="${esc(q.title)}" maxlength="200" required></label>
-            <div class="form-grid"><label>Type<select data-prop="type" ${fixedType ? "disabled" : ""}>${select(schema.TYPES.filter(t => !q.field || t !== "multi" || q.field === "topic"), q.type)}</select></label>
+            <div class="form-grid"><label>Answer type<select data-prop="type" ${fixedType ? "disabled" : ""}>${schema.TYPES.filter(t => !q.field || t !== "multi" || q.field === "topic").map(t => option(t, typeNames[t] || t, q.type)).join("")}</select></label>
               <label>Section<select data-prop="section">${option("", "No section", q.section || "")}${cfg.sections.map(s => option(s.id, s.title, q.section)).join("")}</select></label></div>
             <label class="check-label"><input type="checkbox" data-prop="required" ${q.required ? "checked" : ""} ${essential ? "disabled" : ""}>Required answer</label>
             <label>Help text<textarea data-prop="help" maxlength="1000">${esc(q.help)}</textarea></label>
             <label>Placeholder<input data-prop="placeholder" value="${esc(q.placeholder)}" maxlength="200"></label>
-            <label>Next question (default route)<select data-prop="next">${destinationOptions(cfg, q.next, selected)}</select></label>
+            <details class="builder-details" data-builder-panel="routing" ${openPanels.has("routing") ? "open" : ""}><summary>Question routing</summary><div class="settings-form"><p class="muted small">Choose what comes next. Choice routes override this.</p><label>Next question<select data-prop="next">${destinationOptions(cfg, q.next, selected)}</select></label></div></details>
             ${["number", "multi"].includes(q.type) ? `<div class="form-grid">${["min", "max"].map(k => `<label>${k === "min" ? "Minimum" : "Maximum"}${q.type === "multi" ? " selections" : " value"}<input type="number" step="1" data-prop="${k}" value="${esc(q[k])}" min="${q.type === "multi" ? 1 : -1000000}" max="${q.type === "multi" ? q.choices.length : 1000000}"></label>`).join("")}</div>` : ""}
-            ${["choice", "multi"].includes(q.type) ? `<label>Choices (one label per line)<textarea id="choiceLines" rows="6" aria-describedby="choiceHelp">${esc(q.choices.map(label).join("\n"))}</textarea></label><p id="choiceHelp" class="muted small">Routes stay attached to unchanged labels. Renaming routed choices requires confirmation; their routes follow the same line when unambiguous. New labels use the default route.</p>
+            ${["choice", "multi"].includes(q.type) ? `<label>Choices (one label per line)<textarea id="choiceLines" rows="6" aria-describedby="choiceHelp">${esc(q.choices.map(label).join("\n"))}</textarea></label><p id="choiceHelp" class="muted small">One option per line. Apply changes before saving.</p>
               <button type="button" class="btn" id="applyChoices">Apply choices</button>
-              ${q.type === "choice" ? `<label class="check-label"><input type="checkbox" data-prop="allowOther" ${q.allowOther ? "checked" : ""} ${["facilitator", "time"].includes(selected) ? "disabled" : ""}>Allow another answer (uses default route)</label><h3>Choice branches</h3><div class="branch-list">${q.choices.map((c, i) => `<label>${esc(label(c))}<select data-branch="${i}">${destinationOptions(cfg, typeof c === "object" ? c.goto : "", selected)}</select></label>`).join("")}</div>` : ""}` : ""}
+              ${q.type === "choice" ? `<label class="check-label"><input type="checkbox" data-prop="allowOther" ${q.allowOther ? "checked" : ""} ${["facilitator", "time"].includes(selected) ? "disabled" : ""}>Allow another answer</label><details class="builder-details" data-builder-panel="branches" ${openPanels.has("branches") ? "open" : ""}><summary>Choice routing</summary><p class="muted small">Send an answer to a specific question, or use the next question.</p><div class="branch-list">${q.choices.map((c, i) => `<label>${esc(label(c))}<select data-branch="${i}">${destinationOptions(cfg, typeof c === "object" ? c.goto : "", selected, true)}</select></label>`).join("")}</div></details>` : ""}` : ""}
           </form>
         </section>
       </div>
-      <section class="panel"><h3>Form settings</h3><div class="form-grid"><label>Form title<input id="formTitle" value="${esc(cfg.title)}" maxlength="200" required></label><label>Start question<select id="formStart">${cfg.order.map(id => option(id, cfg.questions[id].title + " (" + id + ")", cfg.start)).join("")}</select></label></div>
-        <p class="muted small">Every route must include requestor, division, category, date, facilitator, time and venue. Invalid routes cannot be saved or published.</p>
-        <h3>Safe appearance options</h3><div class="theme-grid">${["primary", "background"].map(k => `<label>${k === "primary" ? "Accent color" : "Background color"}<input type="color" data-theme="${k}" value="${esc(cfg.theme[k])}"></label>`).join("")}
+      <details class="panel builder-details" data-builder-panel="settings" ${openPanels.has("settings") ? "open" : ""}><summary>Form settings</summary><div class="form-grid"><label>Form title<input id="formTitle" value="${esc(cfg.title)}" maxlength="200" required></label><label>First question<select id="formStart">${cfg.order.map((id, i) => option(id, `${i + 1}. ${cfg.questions[id].title}`, cfg.start)).join("")}</select></label></div>
+        <h3>Appearance</h3><div class="theme-grid">${["primary", "background"].map(k => `<label>${k === "primary" ? "Light accent color" : "Light background color"}<input type="color" data-theme="${k}" value="${esc(cfg.theme[k])}"></label>`).join("")}
           ${[["density", ["compact", "comfortable"]], ["width", ["narrow", "standard", "wide"]], ["cardStyle", ["outlined", "elevated", "flat"]]].map(([key, values]) => `<label>${esc(key)}<select data-theme="${key}">${select(values, cfg.theme[key])}</select></label>`).join("")}</div>
+        <p class="muted small">Manage dark colors and light/dark presets in Settings.</p>
         <h3>Subtle frosted glass</h3>
         <label class="check-label"><input type="checkbox" data-theme="glassEnabled" ${cfg.theme.glassEnabled ? "checked" : ""}>Enable glass surfaces</label>
-        <p class="muted small" id="glassHelp">Soft frosted header, progress tracker, question cards and My Request dialog. Text, inputs and actions stay opaque. Readability limits effective transparency to 20% in light mode and 10% in dark mode. Unsupported browsers and reduced-transparency preferences use solid surfaces.</p>
+        <p class="muted small" id="glassHelp">Transparency is capped at 20% in light mode and 10% in dark mode. Solid surfaces are used when glass is unsupported or reduced transparency is preferred.</p>
         <div class="theme-grid">${[["glassTransparency", "Transparency (%)", 40], ["glassBlur", "Frost blur (px)", 20]].map(([key, title, max]) => `<label>${title}<input type="number" data-theme="${key}" value="${esc(cfg.theme[key] ?? schema.GLASS_DEFAULTS[key])}" min="0" max="${max}" step="1" aria-describedby="glassHelp" ${cfg.theme.glassEnabled ? "" : "disabled"}></label>`).join("")}</div>
         <button type="button" class="btn" id="resetGlass">Reset and disable glass</button>
-      </section>
-      <section class="panel"><h3>Sections</h3><div class="section-list">${cfg.sections.map(s => `<div class="section-editor"><label>Section title<input data-section-title="${esc(s.id)}" value="${esc(s.title)}" maxlength="200"></label><label>Description<textarea data-section-description="${esc(s.id)}" maxlength="1000">${esc(s.description)}</textarea></label><button type="button" class="btn danger" data-remove-section="${esc(s.id)}">Delete section</button></div>`).join("") || '<p class="muted">No sections yet.</p>'}</div><button type="button" class="btn" id="addSection">Add section</button></section>
-      <section class="panel" id="previewPanel" ${previewOpen ? "" : "hidden"}><h3>Saved draft preview</h3><p class="muted">Authenticated public renderer; submissions are disabled. Save again to preview further edits.</p>${previewOpen ? '<iframe class="draft-preview" title="Saved booking form draft" src="/?preview=draft"></iframe>' : ""}</section>`;
+        <p class="muted small version-info">Draft: ${esc(draft.revision)} · Live: ${esc(draft.version)}</p>
+      </details>
+      <details class="panel builder-details" data-builder-panel="sections" ${openPanels.has("sections") ? "open" : ""}><summary>Sections</summary><div class="section-list">${cfg.sections.map(s => `<div class="section-editor"><label>Section title<input data-section-title="${esc(s.id)}" value="${esc(s.title)}" maxlength="200"></label><label>Description<textarea data-section-description="${esc(s.id)}" maxlength="1000">${esc(s.description)}</textarea></label><button type="button" class="btn danger" data-remove-section="${esc(s.id)}">Delete section</button></div>`).join("") || '<p class="muted">No sections yet.</p>'}</div><button type="button" class="btn" id="addSection">Add section</button></details>
+      <section class="panel" id="previewPanel" ${previewOpen ? "" : "hidden"}><h3>Draft preview</h3><p class="muted">Submissions are disabled. Save changes to preview them.</p>${previewOpen ? '<iframe class="draft-preview" title="Saved booking form draft" src="/?preview=draft"></iframe>' : ""}</section>`;
     const find = s => view.querySelector(s);
     find("#inspector").onsubmit = e => e.preventDefault();
     function status() {
@@ -249,7 +383,9 @@
       try { schema.validate(cfg); find("#draftValidation").hidden = true; }
       catch (err) { valid = false; find("#draftValidation").textContent = err.message; find("#draftValidation").hidden = false; }
       const changed = dirty();
-      find("#builderStatus").textContent = changed ? "Unsaved changes — save a valid draft before preview or publish." : "Saved draft — ready to preview or publish.";
+      find("#builderStatus").textContent = !valid ? "Check the highlighted form error." : changed ? "Unsaved changes — save to preview." : "Draft saved — ready to preview or publish.";
+      find("#saveDraft").title = !valid ? "Fix the form error first" : !changed ? "No changes to save" : "Save without changing the live form";
+      ["#previewDraft", "#publishForm"].forEach(s => { find(s).title = !valid ? "Fix the form error first" : changed ? "Save your changes first" : ""; });
       find("#publishForm").disabled = changed || !valid;
       find("#previewDraft").disabled = changed || !valid;
       find("#saveDraft").disabled = !valid || !changed;
@@ -258,14 +394,40 @@
     // Multiline choices are unapplied input too: keep a separate dirty sentinel by
     // committing them on explicit Apply, and gate save/preview until then.
     let choicePending = false;
-    function changed() { previewOpen = false; status(); }
+    function changed() {
+      previewOpen = false;
+      const picked = [...view.querySelectorAll("[data-question]")].find(btn => btn.dataset.question === selected);
+      if (picked) picked.querySelector("span").textContent = `${cfg.order.indexOf(selected) + 1}. ${q.title}`;
+      refreshStructureActions(); status();
+    }
+    function refreshStructureActions() {
+      [["#moveUp", -1], ["#moveDown", 1]].forEach(([selector, direction]) => {
+        let reason = "";
+        try { schema.validate(moveCandidate(direction)); }
+        catch { reason = cfg.order.indexOf(selected) + direction < 0 || cfg.order.indexOf(selected) + direction >= cfg.order.length ? "Already at the end of the list" : "Routing prevents this move"; }
+        const button = find(selector);
+        button.disabled = choicePending || !!reason;
+        button.title = choicePending ? "Apply choices first" : reason;
+      });
+      ["#addQuestion", "#duplicateQuestion", "#removeQuestion"].forEach(selector => {
+        const reason = selector === "#removeQuestion" && essential ? "Required booking field" : !linear(q) ? "Clear choice routes first" : "";
+        find(selector).disabled = choicePending || !!reason;
+        find(selector).title = choicePending ? "Apply choices first" : reason;
+      });
+    }
+    function moveCandidate(direction) {
+      const candidate = clone(cfg);
+      moveQuestion(candidate, selected, direction);
+      return candidate;
+    }
     function pendingChoices() {
       const lines = find("#choiceLines");
       choicePending = !!lines && lines.value !== q.choices.map(label).join("\n");
       if (choicePending) {
-        profileDirty = true; find("#builderStatus").textContent = "Unapplied choice edits — use Apply choices before saving.";
-        ["#saveDraft", "#publishForm", "#previewDraft"].forEach(s => { find(s).disabled = true; });
+        profileDirty = true; find("#builderStatus").textContent = "Apply choices before saving.";
+        ["#saveDraft", "#publishForm", "#previewDraft"].forEach(s => { find(s).disabled = true; find(s).title = "Apply choices first"; });
       } else { profileDirty = false; status(); }
+      refreshStructureActions();
     }
     if (find("#choiceLines")) find("#choiceLines").oninput = pendingChoices;
     const guardChoices = () => { if (choicePending) { error(view, new Error("Apply your choice edits before selecting another question or changing the structure.")); return false; } return true; };
@@ -365,8 +527,7 @@
         return next || c.start;
       });
     };
-    find("#moveUp").disabled = cfg.order.indexOf(selected) === 0;
-    find("#moveDown").disabled = cfg.order.indexOf(selected) === cfg.order.length - 1;
+    refreshStructureActions();
     find("#moveUp").onclick = () => { if (guardChoices()) structural(view, ctx, c => moveQuestion(c, selected, -1)); };
     find("#moveDown").onclick = () => { if (guardChoices()) structural(view, ctx, c => moveQuestion(c, selected, 1)); };
     find("#reloadDraft").onclick = () => {
@@ -402,8 +563,7 @@
   }
 
   function activity(view, ctx, result) {
-    view.innerHTML = `<div class="settings-heading"><div><h2>Activity log</h2><p class="muted">Operational history of saved changes. No passwords or raw request bodies are shown.</p></div></div>
-      <form id="activityFilters" class="toolbar"><label>Action<select name="action">${option("", "All actions", activityQuery.action)}${select(actions, activityQuery.action)}</select></label><label>Since date<input type="date" name="from" value="${esc(activityQuery.from)}"></label><button type="submit" class="btn primary">Apply filters</button><button type="button" class="btn" id="activityRefresh">Refresh</button></form>
+    view.innerHTML = `<form id="activityFilters" class="toolbar"><label>Action<select name="action">${option("", "All actions", activityQuery.action)}${select(actions, activityQuery.action)}</select></label><label>Since date<input type="date" name="from" value="${esc(activityQuery.from)}"></label><button type="submit" class="btn primary">Apply filters</button><button type="button" class="btn" id="activityRefresh">Refresh</button></form>
       <section class="panel activity-panel"><table class="tbl"><caption class="sr-only">Admin activity, page ${esc(result.page)}</caption><thead><tr><th scope="col">When</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Summary</th></tr></thead><tbody>${result.items.map(item => `<tr><td>${esc(new Date(item.timestamp).toLocaleString())}</td><td>${esc(item.actor)}</td><td>${esc(item.action)}</td><td class="activity-target">${esc(item.target)}</td><td>${esc(item.summary)}</td></tr>`).join("") || '<tr><td colspan="5">No activity matches these filters.</td></tr>'}</tbody></table></section>
       <div class="toolbar"><button type="button" class="btn" id="activityPrev" ${result.page <= 1 ? "disabled" : ""}>Previous</button><span role="status">Page ${esc(result.page)}</span><button type="button" class="btn" id="activityNext" ${result.hasMore ? "" : "disabled"}>Next</button></div>`;
     view.querySelector("#activityFilters").onsubmit = e => {

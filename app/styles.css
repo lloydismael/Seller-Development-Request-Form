@@ -50,7 +50,7 @@ body.form-start { min-height:100vh; min-height:100dvh; display:flex; flex-direct
 }
 :root .q-card.is-active.invalid,:root .q-card.invalid:focus-within { border-color:var(--err); }
 .q-card.invalid { border-color:var(--err); }
-.q-card.pulse { box-shadow:0 0 0 4px rgba(52,55,103,.18),0 6px 18px rgba(30,32,70,.08); }
+.q-card.pulse { box-shadow:0 0 0 4px color-mix(in srgb,var(--focus) 18%,transparent),var(--ui-shadow); }
 .q-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
 .q-num { width:30px; height:30px; border-radius:50%; background:#eceefa; color:var(--primary); font-weight:700; font-size:14px; display:grid; place-items:center; flex-shrink:0; transition:background .2s,color .2s; }
 .q-card.done .q-num { background:var(--primary); color:var(--primary-ink); }
@@ -73,14 +73,14 @@ textarea.text-in { resize:vertical; min-height:84px; }
 .tile:hover { border-color:#a9acd6; background:#f8f8fd; }
 .tile:active { transform:scale(.98); }
 .tile input[type=radio],.tile input[type=checkbox] { position:absolute; opacity:0; pointer-events:none; }
-.tile:has(input:focus-visible) { outline:3px solid rgba(52,55,103,.35); outline-offset:2px; }
+.tile:has(input:focus-visible) { outline:3px solid var(--focus); outline-offset:2px; }
 .tile.on { border-color:var(--primary); background:#f1f2fb; box-shadow:0 0 0 1px var(--primary) inset; }
 .tile .tick { position:absolute; top:50%; right:12px; transform:translateY(-50%) scale(.6); width:22px; height:22px; border-radius:50%; background:var(--primary); display:grid; place-items:center; opacity:0; transition:opacity .15s,transform .15s; }
 .tile .tick svg { width:14px; height:14px; fill:#fff; }
 .tile.on .tick { opacity:1; transform:translateY(-50%) scale(1); }
 .tile.disabled,.tile.maxed { opacity:.45; cursor:not-allowed; background:#f6f6f8; }
 .tile.disabled:hover,.tile.maxed:hover { border-color:#d9dbea; }
-.tile .tag { position:absolute; top:-9px; right:10px; font-size:11px; font-weight:700; color:#fff; background:var(--err); padding:2px 8px; border-radius:10px; }
+.tile .tag { position:absolute; top:-9px; right:10px; font-size:11px; font-weight:700; color:var(--ui-danger); background:var(--ui-danger-bg); padding:2px 8px; border-radius:10px; }
 .t-body { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
 .t-label { font-weight:600; font-size:14px; line-height:1.3; }
 .t-sub { font-size:12px; color:var(--muted); line-height:1.3; }

@@ -11,6 +11,35 @@ function luminance(hex) {
   return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
 }
 
+test("booking interaction colors follow the shared palette instead of fixed purple or white", () => {
+  assert.match(styles, /\.tile:has\(input:focus-visible\) \{ outline:3px solid var\(--focus\)/);
+  assert.match(styles, /\.q-card\.pulse \{ box-shadow:0 0 0 4px color-mix\(in srgb,var\(--focus\) 18%,transparent\),var\(--ui-shadow\)/);
+  assert.match(styles, /\.tile \.tag \{[^}]*color:var\(--ui-danger\); background:var\(--ui-danger-bg\)/);
+  assert.ok(html.indexOf('/appearance.js') < html.indexOf('/theme.js'));
+});
+
+test("shared card depth overrides glass shadows and compact admin spacing preserves table panels", () => {
+  const glass = fs.readFileSync(require.resolve("../../app/glass.css"), "utf8");
+  const admin = fs.readFileSync(require.resolve("../../app/admin/admin.css"), "utf8");
+  const cards = glass.indexOf(':root[data-card-style="outlined"]');
+  assert.ok(cards > glass.indexOf(':root[data-glass-style="liquid"]'));
+  assert.match(glass.slice(cards), /data-card-style="elevated"[^}]*box-shadow:var\(--ui-shadow\)/);
+  assert.match(admin, /:root\[data-width="narrow"\] \{ --workspace-width:1000px;/);
+  assert.match(admin, /:root\[data-width="wide"\] \{ --workspace-width:1920px;/);
+  assert.match(admin, /\.layout-editor select \{[^}]*min-height:44px;/);
+  assert.match(admin, /:root\[data-density="compact"\] \.panel:not\(\.table-panel\):not\(\.activity-panel\) \{ padding:16px;/);
+  assert.match(admin, /@media \(max-width:560px\)[\s\S]*\.view \{ padding:0 16px 24px;/);
+});
+test("Settings panels use a full-width editor and aligned supporting cards without row-span gaps", () => {
+  const admin = fs.readFileSync(require.resolve("../../app/admin/admin.css"), "utf8");
+  assert.match(admin, /\.preferences-grid \{ align-items:stretch; gap:20px; \}/);
+  assert.match(admin, /\.preferences-grid > \.appearance-panel \{ grid-column:1 \/ -1; \}/);
+  assert.doesNotMatch(admin, /\.appearance-panel \{ grid-row:span/);
+  assert.match(admin, /\.appearance-panel \{ container-type:inline-size; \}/);
+  assert.match(admin, /@container \(max-width:620px\) \{ \.palette-grid \{ grid-template-columns:1fr; \}/);
+  assert.match(admin, /@container \(max-width:620px\) \{ \.material-options \{ grid-template-columns:1fr; \}/);
+  assert.match(admin, /:root\[data-density="compact"\] \.preferences-grid > \.panel \{ margin-bottom:0; \}/);
+});
 test("shared light and dark semantic text colors meet contrast targets", () => {
   for (const block of tokens.split(":root[data-color-mode")) {
     const values = Object.fromEntries([...block.matchAll(/--ui-([a-z-]+):#([0-9a-f]{6});/g)].map(m => [m[1], m[2]]));

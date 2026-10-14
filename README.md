@@ -236,7 +236,12 @@ The following is an alternative to the recommended linked keyless setup, not its
 - Admin endpoints (`GET /api/bookings`, `/api/bookings/{id}`, `/api/blocks*`) check the signed session cookie
   or authorized SWA provider identity inside the API; profile, draft, publish and activity routes are also protected.
   Requests without a valid admin identity get 401. Browser admin writes require `X-Admin-Request: 1`
-  and exact same-origin checks; no permissive CORS is added.
+  and exact origin checks; no permissive CORS is added. For a linked backend, set
+  `ADMIN_ALLOWED_ORIGINS` to a comma-separated list of exact HTTPS origins (no paths or trailing
+  slashes), including the custom domain and default SWA origin. This list is authoritative, not
+  supplemented by forwarded host headers; unlisted origins and malformed configuration fail closed.
+  Without this setting, local/development requests use exact request/forwarded-host matching.
+  Cross-site requests and writes missing the required header remain rejected in either mode.
 - Public endpoints include `POST /api/bookings`, `GET /api/form-config`, `GET /api/availability`
   (no personal data), `GET /api/health` and `POST /api/auth/login`.
 - Explicit quick UI test mode checks development credentials in the browser on localhost only.

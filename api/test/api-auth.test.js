@@ -60,6 +60,29 @@ test("CSRF header and exact origin checks protect every write and support linked
   assert.equal((await a.handlers.get("authLogout")(noOrigin)).status, 200);
 });
 
+test("configured admin origins survive proxy host rewrites and reject unlisted origins", async () => {
+  const a = api(), token = await a.login();
+  a.env.ADMIN_ALLOWED_ORIGINS = "https://sellerdevelopmentrf.clouditechsolution.com,https://yellow-mushroom-07fa45d00.4.azurestaticapps.net";
+  for (const origin of a.env.ADMIN_ALLOWED_ORIGINS.split(",")) {
+    const req = a.request("POST", {}, token, { origin, host:"internal.azurewebsites.net", "x-forwarded-host":"internal.azurewebsites.net", "x-forwarded-proto":"http", "sec-fetch-site":"same-origin" });
+    req.url = "http://internal.azurewebsites.net/api/auth/logout";
+    assert.equal((await a.handlers.get("authLogout")(req)).status, 200);
+  }
+  for (const extra of [
+    { origin:"https://evil.example", "x-forwarded-host":"evil.example" },
+    { origin:"https://sellerdevelopmentrf.clouditechsolution.com.evil" },
+    { origin:"http://sellerdevelopmentrf.clouditechsolution.com" },
+    { origin:"https://sellerdevelopmentrf.clouditechsolution.com:444" },
+    { origin:"https://sellerdevelopmentrf.clouditechsolution.com/" },
+    { origin:"https://sellerdevelopmentrf.clouditechsolution.com", "x-admin-request":"" },
+    { origin:"https://sellerdevelopmentrf.clouditechsolution.com", "sec-fetch-site":"cross-site" }
+  ]) assert.equal((await a.handlers.get("authLogout")(a.request("POST", {}, token, extra))).status, 403);
+  for (const invalid of ["", "https://example.com,", "http://example.com", "https://example.com/path", "https://example.com,not-a-url"]) {
+    a.env.ADMIN_ALLOWED_ORIGINS = invalid;
+    assert.equal((await a.handlers.get("authLogout")(a.request("POST", {}, token))).status, 403);
+  }
+});
+
 test("profile/password use safe identity, record audit and invalidate old sessions", async () => {
   const a = api(), token = await a.login();
   const profile = await a.handlers.get("authProfile")(a.request("PUT", { displayName:"Test Display", email:"test@example.com", phone:"+1 555" }, token));

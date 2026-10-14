@@ -36,8 +36,17 @@ function sameOrigin(req) {
   try {
     const parsed = new URL(origin), requestUrl = new URL(req.url);
     if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
-    // Linked SWA forwards its public host. Accept exactly one valid authority,
-    // never substring/suffix matches or attacker-selected comma-list entries.
+    // An explicit allowlist is authoritative when a linked proxy rewrites hosts.
+    const configured = process.env.ADMIN_ALLOWED_ORIGINS;
+    if (configured !== undefined) {
+      const origins = configured.split(",").map(value => value.trim());
+      if (!origins.length || origins.some(value => {
+        const allowed = new URL(value);
+        return allowed.protocol !== "https:" || allowed.origin !== value;
+      })) return false;
+      return origins.includes(origin);
+    }
+    // Without an allowlist, retain exact host checks for local/development use.
     const forwarded = req.headers.get("x-forwarded-host"), host = forwarded || req.headers.get("host") || requestUrl.host;
     if (!host || host !== host.trim() || /[,\s/@\\?#]/.test(host)) return false;
     const proto = req.headers.get("x-forwarded-proto") || requestUrl.protocol.slice(0, -1);
@@ -54,7 +63,7 @@ function http(name, definition) {
       const privateRoute = privateRoutes.has(name) || (name === "bookings" && req.method === "GET");
       if (privateRoute && !await isAdmin(req)) return DENIED;
       if (!["GET", "HEAD"].includes(req?.method) && (privateRoute || name === "authLogin" || name === "authLogout") && !sameOrigin(req))
-        return json(403, { error:"Same-origin admin request required. Send X-Admin-Request: 1." });
+        return json(403, { error:"Admin request origin is not allowed or X-Admin-Request: 1 is missing. Open the admin page on an approved application domain and retry." });
       return await handler(req, context);
     } catch (e) {
       const status = [400, 401, 409, 429, 503].includes(e.statusCode) ? e.statusCode : 500;

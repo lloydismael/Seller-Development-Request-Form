@@ -6,7 +6,9 @@ This document authorizes nothing. Packaging is local artifact generation; publis
 	Before staging, run `npm run build` from `api/` in the full repository. This generates ignored
 	`api/src/form-assets/form-config.js` and `form-schema.js` from canonical `app/` sources.
 	Verify the copies match those sources and rebuild after any shared asset change. The API-only
-	package cannot build them during dependency installation: it contains neither `app/` nor `scripts/`.
+	package cannot regenerate them: it contains neither `app/` nor `scripts/`. Azure's remote build
+	runs `npm run build`; in an API-only package this validates the prebuilt assets and fails if
+	either is missing or cannot load. In the full repository the same command regenerates them.
 2. Resolve the active-session pointer. Use a fresh staging directory **inside that ignored active session only**; never overwrite prior packages or source. Reject reparse points/symlinks in `api/`, every source ancestor, every copied file/directory and the destination.
 3. Copy only `host.json`, `package.json`, `package-lock.json`, and the complete `src/` tree from `api/`. Review `src/` locally for unexpected backups/secrets before copying; a directory allowlist is not a secret scanner.
 4. Do not include `local.settings*`, `.env*`, `.migration/`, `.data/`, `scripts/`, `test/`, `node_modules/`, frontend, infrastructure or session files. Do not archive all of `api/` or the repository. No local dependency install is needed for this source-only remote-build package, but the shared-assets build in step 1 is mandatory. Include its generated copies within `src/`; stop if either is missing. Coordinate matching frontend/backend releases for shared schema and transport changes; packaging does not publish a form or overwrite stored draft/published settings.

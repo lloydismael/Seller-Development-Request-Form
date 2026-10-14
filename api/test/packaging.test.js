@@ -21,7 +21,7 @@ function node(args, cwd) {
 test("build copies canonical bytes, refreshes generated assets, and fails without source", t => {
   const dir = fixture(t), script = path.join(dir,"api/scripts/build-form-assets.js");
   const manifest = require("../package.json");
-  assert.equal(manifest.scripts.build,"node scripts/build-form-assets.js");
+  assert.match(manifest.scripts.build, /scripts\/build-form-assets/);
   for (const hook of ["preinstall", "install", "postinstall", "prepare", "prestart"]) assert.equal(manifest.scripts[hook],undefined);
   assert.equal(node([script],dir).status,0);
   for (const name of files) assert.deepEqual(fs.readFileSync(path.join(dir,"api/src/form-assets",name)),fs.readFileSync(path.join(root,"app",name)));
@@ -81,7 +81,10 @@ test("API-only package loads real forms and registers/invokes routes without out
       for (const name of ['form-config.js','form-schema.js']) assert.ok(loaded.includes(path.join(process.cwd(),'src/form-assets',name)));
     })().catch(e => { console.error(e); process.exitCode=1; });
   `;
+  const build = require("../package.json").scripts.build.slice(9, -1);
+  const built = node(["-e", build], pkg); assert.equal(built.status, 0, built.stderr);
   const result = node(["-e",probe],pkg); assert.equal(result.status,0,result.stderr);
   fs.rmSync(path.join(pkg,"src/form-assets"),{ recursive:true });
+  assert.notEqual(node(["-e", build],pkg).status,0,"Remote build must reject missing prebuilt assets");
   assert.notEqual(node(["-e",probe],pkg).status,0,"Unbuilt API-only package must fail rather than fabricate defaults");
 });

@@ -26,13 +26,32 @@ appear only after a valid name is entered. Clearing the name hides downstream
 questions and clears their answers. The current question has a persistent, theme-aware
 focus glow and a subtle animated scale-up (smaller on mobile), including in draft
 preview. Cards ease back to normal size when deselected; reduced-motion mode disables
-scaling. Surrounding cards are gently dimmed and
-return to full visibility on hover or focus; clicking a question selects it.
+scaling. Surrounding cards use quieter slate surfaces without fading their text;
+hover or focus restores their emphasis, and clicking a question selects it.
 Keyboard focus is preserved while typing. The header centers the title and logo,
 with an icon-only Dark mode switch at the far right. The switch retains its accessible
 label and uses an animated sun/moon toggle and smooth color transitions. It initially follows the
 system appearance and remembers an explicit choice locally when storage is available.
-All animations respect reduced-motion preferences.
+All animations respect reduced-motion preferences. The progress bar remains visible
+without a count label, and required fields retain individual indicators and validation
+without a standalone required legend.
+
+## Application design and appearance
+
+Public and admin screens share a slate-and-teal design system in `app/design-tokens.css`
+and accessible theme controls in `app/ui-controls.css`. Semantic light/dark colors cover
+surfaces, text, focus, status feedback, tables, calendars, and dialogs. The shared
+`app/theme.js` applies the saved preference before page rendering and synchronizes
+changes across same-origin pages, including draft previews. If storage is unavailable,
+the switch still works for the current page.
+
+The admin portal uses a desktop sidebar and expandable mobile navigation, retaining
+all eight destinations and unsaved-draft protections. The theme switch is available
+both at login and within the portal. Published form accent/background choices remain
+unchanged; light mode respects those settings, while dark mode uses accessible viewer
+colors without saving changes to the form. The teal bootstrap default applies only to
+configurations without an explicit theme, not existing saved drafts or published forms.
+No external fonts, UI framework, or additional runtime dependency is needed.
 
 ## Admin features
 | Tab | What it does |

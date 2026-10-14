@@ -1,0 +1,21 @@
+[hidden] { display:none !important; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; background:var(--ui-bg); color:var(--ui-text); line-height:1.5; }
+button,input,select,textarea { font:inherit; }
+button,a,input,select,textarea { -webkit-tap-highlight-color:transparent; }
+:focus-visible { outline:3px solid var(--ui-focus); outline-offset:3px; }
+input::placeholder,textarea::placeholder { color:var(--ui-muted); opacity:1; }
+.theme-toggle { display:flex; align-items:center; justify-content:center; min-height:44px; padding:6px 8px; border:1px solid var(--ui-border); border-radius:24px; background:var(--ui-surface); color:var(--ui-text); cursor:pointer; }
+.theme-toggle:hover { background:var(--ui-raised); }
+.theme-track { display:block; position:relative; width:48px; height:28px; border-radius:20px; background:#f5c960; box-shadow:inset 0 2px 5px #0002; transition:background .35s ease; }
+.theme-thumb { position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; color:#9b6400; box-shadow:0 2px 5px #0003; transition:transform .4s cubic-bezier(.22,1.4,.5,1),color .3s; }
+.theme-thumb svg { position:absolute; inset:3px; width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; transition:opacity .3s,transform .4s; }
+.theme-moon { opacity:0; transform:rotate(-90deg) scale(.5); }
+:root[data-color-mode="dark"] .theme-track { background:#0f766e; }
+:root[data-color-mode="dark"] .theme-thumb { transform:translateX(20px); color:#0f766e; }
+:root[data-color-mode="dark"] .theme-sun { opacity:0; transform:rotate(90deg) scale(.5); }
+:root[data-color-mode="dark"] .theme-moon { opacity:1; transform:none; }
+.theme-switching body,.theme-switching .q-card,.theme-switching .panel,.theme-switching .stat,.theme-switching .gate-card,.theme-switching .topbar,.theme-switching .sidebar,.theme-switching .progress-wrap,.theme-switching .tile,.theme-switching input,.theme-switching select,.theme-switching textarea,.theme-switching .date-tile,.theme-switching .chip,.theme-switching .btn,.theme-switching .notice,.theme-switching .modal-box { transition:background-color .45s ease,color .35s ease,border-color .35s ease,box-shadow .35s ease; }
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+}

@@ -113,6 +113,29 @@
   }
 
   // ---------- shell ----------
+  const pages = {
+    dashboard: ["Dashboard", "A clear view of your training requests and upcoming sessions."],
+    calendar: ["Calendar", "Plan ahead with a shared view of training sessions and time off."],
+    availability: ["Facilitator availability", "Find the right facilitator and an available time for your session."],
+    bookings: ["Bookings", "Review requests, manage schedules and export your booking records."],
+    blocks: ["Blocked dates", "Keep availability accurate with leave, holidays and other commitments."],
+    profile: ["My profile", "Your account details and security, in one place."],
+    builder: ["Form builder", "Shape the booking experience with safe drafts and publishing."],
+    activity: ["Activity log", "Follow changes across bookings, accounts and your booking form."]
+  };
+  function closeNavigation(restoreFocus = false) {
+    $(".topbar").classList.remove("nav-open");
+    $("#navToggle").setAttribute("aria-expanded", "false");
+    if (restoreFocus) $("#navToggle").focus();
+  }
+  $("#navToggle").onclick = () => {
+    const open = $("#navToggle").getAttribute("aria-expanded") !== "true";
+    $(".topbar").classList.toggle("nav-open", open);
+    $("#navToggle").setAttribute("aria-expanded", String(open));
+  };
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && $(".topbar").classList.contains("nav-open") && $("#modal").hidden) closeNavigation(true);
+  });
   let user, identity;
   try {
     mode = await S.mode();
@@ -151,8 +174,10 @@
     $("#clearBtn").onclick = () => { if (confirm("Delete all locally stored bookings and blocked dates?")) { S.replaceLocal([], []); reload(); } };
   }
   document.querySelectorAll(".tab").forEach(b => (b.onclick = () => {
-    if (b.dataset.tab === st.tab || !window.SettingsUI.canLeave()) return;
-    st.tab = b.dataset.tab; render();
+    if (b.dataset.tab === st.tab) { closeNavigation(true); return; }
+    if (!window.SettingsUI.canLeave()) return;
+    st.tab = b.dataset.tab; render(); closeNavigation();
+    $("#view").focus();
   }));
   $(".user a").onclick = e => { if (!window.SettingsUI.canLeave()) e.preventDefault(); };
 
@@ -177,7 +202,22 @@
     }
   });
 
+  function accessibleActions(root) {
+    root.querySelectorAll("[data-open],[data-day]").forEach(el => {
+      el.tabIndex = 0;
+      if (el.tagName === "DIV") el.setAttribute("role", "button");
+      el.setAttribute("aria-label", el.dataset.day ? `View ${fmtDate(el.dataset.day)}` : `View booking: ${el.title || el.textContent.trim()}`);
+    });
+  }
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (!e.target.matches("[data-open],[data-day]")) return;
+    e.preventDefault(); e.target.click();
+  });
   function render() {
+    const [pageTitle, description] = pages[st.tab];
+    $("#pageTitle").textContent = pageTitle;
+    $("#pageDescription").textContent = description;
     document.querySelectorAll(".tab").forEach(b => {
       b.classList.toggle("active", b.dataset.tab === st.tab);
       if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
@@ -191,6 +231,7 @@
     window.SettingsUI.deactivate();
     if (!Q) { initialize(); return; }
     ({ dashboard, calendar, availability, bookings: bookingsView, blocks: blocksView })[st.tab](v);
+    accessibleActions(v);
   }
 
   // ---------- shared fragments ----------
@@ -199,7 +240,7 @@
     return `<div class="row" data-open="${esc(b.id)}">
       <div class="dbadge"><small>${d ? d.toLocaleDateString("en-PH", { month: "short" }) : ""}</small><b>${d ? d.getDate() : "?"}</b></div>
       <div class="main"><div class="t">${hasConflict(b) ? '<span class="warnicon" title="Conflict">⚠ </span>' : ""}${esc(title(b))}</div>
-        <div class="s">${esc(b.time)} · <span style="color:${color(b.facilitator)}">●</span> ${esc(b.facilitator)} · ${esc(b.requestor)} (${esc(b.division)})</div></div>
+        <div class="s">${esc(b.time)} · <span class="dot" style="background:${color(b.facilitator)}"></span> ${esc(b.facilitator)} · ${esc(b.requestor)} (${esc(b.division)})</div></div>
       <span class="pill ${esc(b.status)}">${esc(b.status)}</span>
       ${quick && b.status === "Pending" ? `<button class="btn sm ok" data-act="Approved" data-id="${esc(b.id)}">Approve</button><button class="btn sm danger" data-act="Rejected" data-id="${esc(b.id)}">Reject</button>` : ""}
     </div>`;
@@ -212,7 +253,7 @@
       <div class="track"><div class="fill" style="width:${(n / max) * 100}%;${colorFn ? `background:${colorFn(k)}` : ""}"></div></div><b>${n}</b></div>`).join("");
   }
   const legend = () => `<div class="legend">${FACS.map(f => `<span><i style="background:${color(f)}"></i>${esc(f)}</span>`).join("")}
-    <span><i style="background:#ccc"></i>Blocked</span><span><i style="border:1px dashed #999"></i><em>Pending (dashed)</em></span></div>`;
+    <span><i class="legend-blocked"></i>Blocked</span><span><i class="legend-pending"></i><em>Pending (dashed)</em></span></div>`;
 
   // ---------- Dashboard ----------
   function dashboard(v) {
@@ -258,17 +299,17 @@
     }
     v.innerHTML = `
       <div class="toolbar">
-        <button class="btn" data-nav="-1">‹</button><button class="btn" data-nav="0">Today</button><button class="btn" data-nav="1">›</button>
+        <button class="btn" data-nav="-1" aria-label="Previous month">‹</button><button class="btn" data-nav="0">Today</button><button class="btn" data-nav="1" aria-label="Next month">›</button>
         <h2>${m.toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</h2><span class="spacer"></span>
-        <select id="calFac">${opts(FACS, st.calFac, "All facilitators")}</select>
-        <select id="calStatus">
+        <select id="calFac" aria-label="Filter calendar by facilitator">${opts(FACS, st.calFac, "All facilitators")}</select>
+        <select id="calStatus" aria-label="Filter calendar by status">
           <option value="active" ${st.calStatus === "active" ? "selected" : ""}>Active (Pending/Approved/Completed)</option>
           <option value="all" ${st.calStatus === "all" ? "selected" : ""}>All statuses</option>
           ${STATUSES.map(s => `<option ${st.calStatus === s ? "selected" : ""}>${s}</option>`).join("")}
         </select>
       </div>
       ${legend()}
-      <div class="cal">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="dow">${d}</div>`).join("")}${cells}</div>
+      <div class="cal-scroll"><div class="cal">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="dow">${d}</div>`).join("")}${cells}</div></div>
       <p class="muted small">Click a booking to view/edit it. Click a day to see all bookings and facilitator availability for that date.</p>`;
     $("#calFac").onchange = e => { st.calFac = e.target.value; render(); };
     $("#calStatus").onchange = e => { st.calStatus = e.target.value; render(); };
@@ -276,7 +317,7 @@
 
   function daySlotTable(ds) {
     return `<table class="slotgrid"><thead><tr><th>Facilitator</th>${TIMES.map(t => `<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>
-      ${FACS.map(f => `<tr><td style="text-align:left"><span class="dot" style="background:${color(f)}"></span>${esc(f)}</td>
+      ${FACS.map(f => `<tr><td class="fac"><span class="dot" style="background:${color(f)}"></span>${esc(f)}</td>
         ${TIMES.map(t => { const s = slotState(f, ds, S.slotRange(t)); return `<td class="s-${s.s}" title="${esc(s.tip)}">${s.label}</td>`; }).join("")}</tr>`).join("")}
       </tbody></table>`;
   }
@@ -284,9 +325,9 @@
   function openDay(ds) {
     const items = bookings.filter(b => b.trainingDate === ds).sort(byDate);
     openModal(`<h2>${fmtDate(ds)}</h2>
-      <h3 style="margin-top:16px">Bookings (${items.length})</h3>
+      <h3 class="section-heading">Bookings (${items.length})</h3>
       ${items.length ? items.map(b => rowHtml(b, true)).join("") : empty("No bookings on this date.")}
-      <h3 style="margin-top:18px">Facilitator availability</h3>${daySlotTable(ds)}
+      <h3 class="section-heading">Facilitator availability</h3><div class="slot-table-scroll">${daySlotTable(ds)}</div>
       <div class="modal-actions"><button class="btn" id="blockDayBtn">Block a facilitator on this date</button></div>`);
     $("#modalBody").onclick = async e => {
       const t = e.target.closest("[data-act],[data-open]"); if (!t) return;
@@ -315,7 +356,7 @@
     }).join("");
     v.innerHTML = `
       <div class="toolbar">
-        <button class="btn" data-wnav="-1">‹</button><button class="btn" data-wnav="0">This week</button><button class="btn" data-wnav="1">›</button>
+        <button class="btn" data-wnav="-1" aria-label="Previous week">‹</button><button class="btn" data-wnav="0">This week</button><button class="btn" data-wnav="1" aria-label="Next week">›</button>
         <h2>${days[0].toLocaleDateString("en-PH", { month: "short", day: "numeric" })} – ${days[6].toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</h2>
       </div>
       <div class="legend"><span><i class="s-free"></i>Free</span><span><i class="s-pending"></i>Pending request</span>
@@ -357,14 +398,14 @@
   function bookingsView(v) {
     v.innerHTML = `
       <div class="toolbar">
-        <input type="search" id="bq" placeholder="Search requestor, topic, venue…" value="${esc(st.q)}" style="min-width:240px">
-        <select id="bWhen"><option value="upcoming">Upcoming</option><option value="past">Past</option><option value="all">All dates</option></select>
-        <select id="bStatus">${opts(STATUSES, st.fStatus, "All statuses")}</select>
-        <select id="bCat">${opts(CATS, st.fCat, "All categories")}</select>
-        <select id="bFac">${opts(FACS, st.fFac, "All facilitators")}</select>
+        <input type="search" id="bq" class="search-control" aria-label="Search bookings" placeholder="Search requestor, topic, venue…" value="${esc(st.q)}">
+        <select id="bWhen" aria-label="Filter by date range"><option value="upcoming">Upcoming</option><option value="past">Past</option><option value="all">All dates</option></select>
+        <select id="bStatus" aria-label="Filter by status">${opts(STATUSES, st.fStatus, "All statuses")}</select>
+        <select id="bCat" aria-label="Filter by category">${opts(CATS, st.fCat, "All categories")}</select>
+        <select id="bFac" aria-label="Filter by facilitator">${opts(FACS, st.fFac, "All facilitators")}</select>
         <span class="spacer"></span><button class="btn" id="bExport">Export CSV</button>
       </div>
-      <div class="panel" style="padding:0"><div id="bTable"></div></div>`;
+      <div class="panel table-panel"><div id="bTable"></div></div>`;
     $("#bWhen").value = st.fWhen;
     const bind = (id, key) => ($(id).oninput = e => { st[key] = e.target.value; table(); });
     bind("#bq", "q"); bind("#bWhen", "fWhen"); bind("#bStatus", "fStatus"); bind("#bCat", "fCat"); bind("#bFac", "fFac");
@@ -373,7 +414,7 @@
   }
   function table() {
     const rows = filtered();
-    $("#bTable").innerHTML = `<div style="padding:10px 12px" class="count">${rows.length} booking${rows.length === 1 ? "" : "s"}</div>
+    $("#bTable").innerHTML = `<div class="table-count count">${rows.length} booking${rows.length === 1 ? "" : "s"}</div>
       <table class="tbl"><thead><tr><th>Date</th><th>Time</th><th>Facilitator</th><th>Category / Topic</th><th>Requestor</th><th>Venue</th><th>Pax</th><th>Status</th></tr></thead>
       <tbody>${rows.map(b => `<tr data-open="${esc(b.id)}">
         <td>${hasConflict(b) ? '<span class="warnicon" title="Conflict">⚠ </span>' : ""}${fmtDate(b.trainingDate)}</td><td>${esc(b.time)}</td>
@@ -382,6 +423,7 @@
         <td>${esc(b.requestor)}<br><span class="muted">${esc(b.division)}${b.director ? " · " + esc(b.director) : ""}</span></td>
         <td>${esc(b.venue)}</td><td>${esc(b.participants)}</td><td><span class="pill ${esc(b.status)}">${esc(b.status)}</span></td></tr>`).join("")
         || `<tr><td colspan="8">${empty("No bookings match the filters.")}</td></tr>`}</tbody></table>`;
+    accessibleActions($("#bTable"));
   }
   function exportCsv(rows) {
     if (!rows.length) return alert("Nothing to export.");
@@ -406,12 +448,12 @@
           <label>Facilitator<select id="blFac">${opts(["All facilitators", ...FACS], "")}</select></label>
           <label>From<input type="date" id="blFrom" value="${st.prefillDate || today}"></label>
           <label>To<input type="date" id="blTo" value="${st.prefillDate || today}"></label>
-          <label style="flex:1;min-width:200px">Reason<input type="text" id="blReason" placeholder="e.g. Vacation leave"></label>
+          <label class="reason-control">Reason<input type="text" id="blReason" placeholder="e.g. Vacation leave"></label>
           <button class="btn primary" id="blAdd">Add</button>
         </div>
         <div id="blWarn"></div>
       </div>
-      <div class="panel" style="padding:0"><table class="tbl"><thead><tr><th>Facilitator</th><th>From</th><th>To</th><th>Reason</th><th></th></tr></thead>
+      <div class="panel table-panel"><table class="tbl"><thead><tr><th>Facilitator</th><th>From</th><th>To</th><th>Reason</th><th></th></tr></thead>
         <tbody>${list.map(x => `<tr><td><span class="dot" style="background:${color(x.facilitator)}"></span>${esc(x.facilitator)}</td>
           <td>${fmtDate(x.startDate)}</td><td>${fmtDate(x.endDate || x.startDate)}</td><td>${esc(x.reason)}</td>
           <td><button class="btn sm danger" data-delblock="${esc(x.id)}">Remove</button></td></tr>`).join("")
@@ -458,7 +500,7 @@
         <label class="full">Admin notes<textarea id="eNotes" placeholder="Internal notes (not visible to requestor)">${esc(b.adminNotes)}</textarea></label>
       </div>
       <div id="eConflict"></div>
-      <h3 style="margin-top:14px">Original submission</h3>
+      <h3 class="section-heading">Original submission</h3>
       ${b.formVersion ? `<p class="muted small">Form version: ${esc(b.formVersion)}</p>` : ""}
       <table class="kv">${answerRows.map(([k, v, key]) => `<tr><th>${esc(k)}${key ? `<small class="answer-id">${esc(key)}</small>` : ""}</th><td>${esc(answerText(v))}</td></tr>`).join("")}</table>
       <div class="modal-actions">
@@ -484,11 +526,36 @@
   }
 
   // ---------- modal ----------
-  function openModal(html) { $("#modalBody").innerHTML = html; $("#modal").hidden = false; }
-  function closeModal() { $("#modal").hidden = true; $("#modalBody").innerHTML = ""; }
+  let modalReturnFocus;
+  function openModal(html) {
+    if ($("#modal").hidden) modalReturnFocus = document.activeElement;
+    $("#modalBody").innerHTML = html;
+    accessibleActions($("#modalBody"));
+    const heading = $("#modalBody h2");
+    if (heading) { heading.id = "modalTitle"; $(".modal-box").setAttribute("aria-labelledby", "modalTitle"); }
+    else $(".modal-box").removeAttribute("aria-labelledby");
+    $("#modal").hidden = false;
+    $("#app").inert = true; $("#themeToggle").inert = true;
+    $("#modalClose").focus();
+  }
+  function closeModal() {
+    $("#modal").hidden = true; $("#modalBody").innerHTML = "";
+    $("#app").inert = false; $("#themeToggle").inert = false;
+    if (modalReturnFocus?.isConnected) modalReturnFocus.focus();
+    else $("#view").focus();
+  }
   $("#modalClose").onclick = closeModal;
   $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#modal").hidden) closeModal(); });
+  document.addEventListener("keydown", e => {
+    if ($("#modal").hidden) return;
+    if (e.key === "Escape") { e.preventDefault(); closeModal(); return; }
+    if (e.key !== "Tab") return;
+    const controls = [...$(".modal-box").querySelectorAll('button, input:not([type="hidden"]), select, textarea, a[href], [tabindex="0"]')]
+      .filter(el => !el.disabled && el.getClientRects().length);
+    const first = controls[0], last = controls[controls.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 
   // ---------- sample data (local mode only) ----------
   function seedSample() {

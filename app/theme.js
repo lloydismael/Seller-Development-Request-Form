@@ -14,6 +14,11 @@
   system.addEventListener("change", e => {
     if (!preference) apply(e.matches ? "dark" : "light");
   });
+  window.addEventListener("storage", e => {
+    if (e.key !== key && e.key !== null) return;
+    preference = ["light", "dark"].includes(e.newValue) ? e.newValue : null;
+    apply(preference || (system.matches ? "dark" : "light"));
+  });
   document.addEventListener("DOMContentLoaded", () => {
     const toggle = document.getElementById("themeToggle");
     if (!toggle) return;

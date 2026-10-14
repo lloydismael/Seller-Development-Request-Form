@@ -53,7 +53,7 @@
   async function render(tab, view, context) {
     activeTab = tab; const token = ++generation;
     if (context.mode !== "api") {
-      view.innerHTML = `<section class="panel"><h2>${esc({ profile:"My profile", builder:"Form builder", activity:"Activity log" }[tab])}</h2><p class="muted">These settings require the authenticated API. Account changes, drafts and publishing are not available in local storage mode.</p></section>`;
+      view.innerHTML = `<section class="panel settings-unavailable"><span class="state-mark" aria-hidden="true">◎</span><h2>${esc({ profile:"My profile", builder:"Form builder", activity:"Activity log" }[tab])}</h2><p class="muted">These settings require the authenticated API. Account changes, drafts and publishing are not available in local storage mode.</p></section>`;
       return;
     }
     view.innerHTML = '<div class="panel" role="status">Loading settings…</div>';

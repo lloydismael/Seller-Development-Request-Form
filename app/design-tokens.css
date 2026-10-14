@@ -1,0 +1,25 @@
+:root {
+  color-scheme:light;
+  --ui-bg:#f8fafc; --ui-surface:#ffffff; --ui-raised:#f1f5f9;
+  --ui-text:#0f172a; --ui-muted:#475569; --ui-border:#cbd5e1;
+  --ui-primary:#0f766e; --ui-primary-ink:#ffffff; --ui-focus:#0f766e;
+  --ui-success-bg:#dcfce7; --ui-success:#166534;
+  --ui-warning-bg:#fef3c7; --ui-warning:#854d0e;
+  --ui-danger-bg:#fff1f2; --ui-danger:#9f1239;
+  --ui-info-bg:#e0f2fe; --ui-info:#075985;
+  --ui-shadow:0 2px 4px #0f172a04,0 8px 24px #0f172a08;
+  --ui-overlay:#0f172a99; --ui-radius:12px;
+  --ui-space-1:4px; --ui-space-2:8px; --ui-space-3:12px; --ui-space-4:16px; --ui-space-6:24px; --ui-space-8:32px;
+}
+:root[data-color-mode="dark"] {
+  color-scheme:dark;
+  --ui-bg:#0f172a; --ui-surface:#1e293b; --ui-raised:#273449;
+  --ui-text:#f1f5f9; --ui-muted:#cbd5e1; --ui-border:#64748b;
+  --ui-primary:#5eead4; --ui-primary-ink:#0f172a; --ui-focus:#5eead4;
+  --ui-success-bg:#143b2a; --ui-success:#86efac;
+  --ui-warning-bg:#422f14; --ui-warning:#fde68a;
+  --ui-danger-bg:#421c2a; --ui-danger:#fda4af;
+  --ui-info-bg:#173449; --ui-info:#bae6fd;
+  --ui-shadow:0 2px 4px #0001,0 8px 24px #0002;
+  --ui-overlay:#020617b3;
+}

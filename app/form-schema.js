@@ -51,7 +51,7 @@
     const ids = Object.keys(input.questions);
     if (!ids.length || ids.length > 60) fail("Use 1–60 questions.");
     const out = { title:text(input.title), start:id(input.start), questions:{}, order:input.order || ids,
-      sections:input.sections || [], theme:input.theme || { primary:"#2563eb", background:"#f8fafc", density:"comfortable", width:"standard", cardStyle:"outlined" } };
+      sections:input.sections || [], theme:input.theme || { primary:"#0f766e", background:"#f8fafc", density:"comfortable", width:"standard", cardStyle:"outlined" } };
     if (!Array.isArray(out.order) || out.order.length !== ids.length || new Set(out.order).size !== ids.length || out.order.some(k => !own(input.questions, k))) fail("order must contain every question ID exactly once.");
     out.order = out.order.map(id);
     if (!Array.isArray(out.sections) || out.sections.length > 20) fail("Use at most 20 sections.");

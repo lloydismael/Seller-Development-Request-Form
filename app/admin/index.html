@@ -5,14 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin – Seller Development Bookings</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg">
+  <link rel="stylesheet" href="/design-tokens.css">
+  <link rel="stylesheet" href="/ui-controls.css">
   <link rel="stylesheet" href="/admin/admin.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#view">Skip to main content</a>
+  <button class="theme-toggle admin-theme-toggle" id="themeToggle" type="button" role="switch" aria-checked="false" aria-label="Dark mode">
+    <span class="theme-track" aria-hidden="true"><span class="theme-thumb"><svg class="theme-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><svg class="theme-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></svg></span></span>
+  </button>
   <!-- Sign-in gate -->
   <section id="gate" class="gate" hidden>
     <div class="gate-card">
+      <div class="gate-mark" aria-hidden="true">SD</div>
+      <p class="eyebrow">Administration portal</p>
       <h1>Seller Development Bookings</h1>
-      <p class="muted">Admin Login</p>
+      <p class="muted">Sign in to manage requests, schedules and your team.</p>
       <form id="loginForm" class="login-form" autocomplete="on">
         <label>Username<input type="text" id="lUser" name="username" autocomplete="username" required></label>
         <label>Password<input type="password" id="lPass" name="password" autocomplete="current-password" required></label>
@@ -27,30 +36,35 @@
   <!-- Admin app -->
   <div id="app" hidden>
     <header class="topbar">
-      <div class="brand">Seller Development <span>Admin</span></div>
-      <nav class="tabs" aria-label="Administration">
-        <button class="tab" data-tab="dashboard">Dashboard</button>
-        <button class="tab" data-tab="calendar">Calendar</button>
-        <button class="tab" data-tab="availability">Facilitator Availability</button>
-        <button class="tab" data-tab="bookings">Bookings</button>
-        <button class="tab" data-tab="blocks">Blocked Dates</button>
-        <button class="tab" data-tab="profile">My Profile</button>
-        <button class="tab" data-tab="builder">Form Builder</button>
-        <button class="tab" data-tab="activity">Activity Log</button>
-      </nav>
-      <div class="user">
-        <span id="modeBadge" class="badge"></span>
-        <span id="userName"></span>
-        <a class="btn sm ghost" href="/">Booking form</a>
-        <button id="logoutBtn" class="btn sm ghost">Log out</button>
+      <div class="brand"><span class="brand-mark" aria-hidden="true">SD</span><div>Seller Development<small>Bookings administration</small></div></div>
+      <button id="navToggle" class="btn nav-toggle" type="button" aria-expanded="false" aria-controls="adminNav">Menu</button>
+      <div class="navigation" id="adminNav">
+        <p class="nav-label">Workspace</p>
+        <nav class="tabs" aria-label="Administration">
+          <button class="tab" data-tab="dashboard"><span aria-hidden="true">◫</span>Dashboard</button>
+          <button class="tab" data-tab="calendar"><span aria-hidden="true">▦</span>Calendar</button>
+          <button class="tab" data-tab="availability"><span aria-hidden="true">◷</span>Facilitator availability</button>
+          <button class="tab" data-tab="bookings"><span aria-hidden="true">☷</span>Bookings</button>
+          <button class="tab" data-tab="blocks"><span aria-hidden="true">⊘</span>Blocked dates</button>
+          <button class="tab" data-tab="profile"><span aria-hidden="true">◎</span>My profile</button>
+          <button class="tab" data-tab="builder"><span aria-hidden="true">▤</span>Form builder</button>
+          <button class="tab" data-tab="activity"><span aria-hidden="true">↺</span>Activity log</button>
+        </nav>
+        <div class="user">
+          <span id="modeBadge" class="badge"></span>
+          <span id="userName"></span>
+          <a class="btn sm ghost" href="/">Booking form ↗</a>
+          <button id="logoutBtn" class="btn sm ghost">Log out</button>
+        </div>
       </div>
     </header>
+    <div class="workspace-heading"><div><p class="eyebrow">Administration</p><h1 id="pageTitle">Dashboard</h1><p id="pageDescription" class="muted">A clear view of your training requests and upcoming sessions.</p></div></div>
     <div id="devBar" class="devbar" hidden>
       <span><strong>Local dev mode:</strong> data is stored in this browser only (no API running).</span>
       <button class="btn sm" id="seedBtn">Load sample data</button>
       <button class="btn sm" id="clearBtn">Clear local data</button>
     </div>
-    <main id="view" class="view"></main>
+    <main id="view" class="view" tabindex="-1" aria-labelledby="pageTitle"></main>
   </div>
 
   <!-- Modal -->

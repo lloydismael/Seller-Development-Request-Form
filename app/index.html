@@ -19,7 +19,7 @@
     </div>
   </header>
 
-  <div class="progress-wrap" id="progressWrap">
+  <div class="progress-wrap" id="progressWrap" hidden>
     <div class="progress-inner">
       <div class="progress" role="progressbar" aria-label="Request completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-describedby="progressText"><div class="progress-fill" id="progressFill"></div></div>
       <span class="progress-text" id="progressText">0 of 0 answered</span>
@@ -27,12 +27,18 @@
   </div>
 
   <main class="wrap">
-    <form id="bookingForm" novalidate>
+    <section id="formLoad" class="q-card" aria-busy="true">
+      <p id="loadMessage" role="status">Loading the published form…</p>
+      <button type="button" id="retryFormBtn" class="btn" hidden>Retry loading form</button>
+    </section>
+    <aside id="previewBanner" class="notice" role="status" hidden>Authenticated draft preview — submissions are disabled. This preview does not save any bookings.</aside>
+    <form id="bookingForm" novalidate hidden>
       <p class="required-note"><span class="req">*</span> Required</p>
       <div id="questions"></div>
       <div id="formError" class="err form-error" role="alert" tabindex="-1" hidden></div>
+      <button type="button" id="refreshFormBtn" class="btn" hidden>Load latest form (clears current answers)</button>
       <div class="submit-bar">
-        <button type="submit" id="submitBtn" class="btn primary lg">Submit request</button>
+        <button type="submit" id="submitBtn" class="btn primary lg" disabled>Submit request</button>
       </div>
     </form>
 
@@ -40,12 +46,14 @@
       <div class="thanks-icon" aria-hidden="true">✓</div>
       <h2 tabindex="-1">Your booking request has been submitted</h2>
       <p>Status: <strong>Pending approval</strong>. Here is a summary of your request:</p>
+      <p id="saveWarning" class="notice" role="status" hidden></p>
       <table class="summary"><tbody id="summary"></tbody></table>
       <div class="submit-bar"><button type="button" id="againBtn" class="btn primary">Submit another request</button></div>
     </section>
   </main>
 
   <script src="/form-config.js"></script>
+  <script src="/form-schema.js"></script>
   <script src="/data.js"></script>
   <script src="/app.js"></script>
 </body>

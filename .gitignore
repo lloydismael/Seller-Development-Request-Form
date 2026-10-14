@@ -3,4 +3,5 @@ api/.data/
 api/local.settings.json
 .copilot-azure/
 api/.migration/
+api/src/form-assets/
 .DS_Store

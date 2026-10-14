@@ -28,12 +28,15 @@
   <div id="app" hidden>
     <header class="topbar">
       <div class="brand">Seller Development <span>Admin</span></div>
-      <nav class="tabs">
+      <nav class="tabs" aria-label="Administration">
         <button class="tab" data-tab="dashboard">Dashboard</button>
         <button class="tab" data-tab="calendar">Calendar</button>
         <button class="tab" data-tab="availability">Facilitator Availability</button>
         <button class="tab" data-tab="bookings">Bookings</button>
         <button class="tab" data-tab="blocks">Blocked Dates</button>
+        <button class="tab" data-tab="profile">My Profile</button>
+        <button class="tab" data-tab="builder">Form Builder</button>
+        <button class="tab" data-tab="activity">Activity Log</button>
       </nav>
       <div class="user">
         <span id="modeBadge" class="badge"></span>
@@ -57,10 +60,12 @@
       <div id="modalBody"></div>
     </div>
   </div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="/form-config.js"></script>
+  <script src="/form-schema.js"></script>
   <script src="/data.js"></script>
+  <script src="/admin/settings.js"></script>
   <script src="/admin/admin.js"></script>
 </body>
 </html>

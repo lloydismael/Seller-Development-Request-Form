@@ -1,37 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
-const authSource = fs.readFileSync(require.resolve("../src/auth"), "utf8");
-const apiSource = fs.readFileSync(require.resolve("../src/functions/api"), "utf8");
-
-function api() {
-  const env = { WEBSITE_SITE_NAME: "test", ADMIN_USERNAME: "test-admin",
-    ADMIN_PASSWORD: "test-only-password-not-for-deployment",
-    SESSION_SECRET: "test-only-signing-secret-not-for-deployment" };
-  const context = { module: { exports: {} }, process: { env }, require, Buffer, URL, Date,
-    console: { warn() {} } };
-  vm.runInNewContext(authSource, context);
-  const auth = context.module.exports, handlers = new Map();
-  let reads = 0, writes = 0;
-  const collection = {
-    async list() { reads++; return []; }, async get() { reads++; return null; },
-    async put() { writes++; }, async remove() { writes++; }
-  };
-  vm.runInNewContext(apiSource, {
-    setTimeout: callback => { callback(); }, require(name) {
-      if (name === "@azure/functions") return { app: { http: (name, definition) => handlers.set(name, definition.handler) } };
-      if (name === "../auth") return auth;
-      if (name === "../store") return { kind: "table", bookings: collection, blocks: collection, async checkConnection() {} };
-      if (name === "../rules") return require("../src/rules");
-      return require(name);
-    }
-  });
-  const request = (method, body, token) => ({ method, url: "https://example.com/api",
-    headers: new Headers(token ? { cookie: `sdrf_admin=${token}` } : {}),
-    params: { id: "test" }, query: new URLSearchParams("date=2026-12-01"), json: async () => body });
-  return { handlers, request, env, reads: () => reads, writes: () => writes };
-}
+const { harness:api } = require("./api-harness");
 
 test("login, me, protected reads and logout preserve signed-cookie contracts", async () => {
   const a = api();
@@ -61,11 +30,73 @@ test("login, me, protected reads and logout preserve signed-cookie contracts", a
 test("all private operations reject anonymous callers before storage access", async () => {
   const a = api();
   for (const [name, method] of [["bookings", "GET"], ["bookingItem", "PUT"], ["bookingItem", "DELETE"],
-    ["blocks", "GET"], ["blocks", "POST"], ["blockItem", "DELETE"]]) {
+    ["blocks", "GET"], ["blocks", "POST"], ["blockItem", "DELETE"], ["authProfile", "GET"], ["authProfile", "PUT"],
+    ["authPassword", "POST"], ["formDraft", "GET"], ["formDraft", "PUT"], ["formPublish", "POST"], ["activity", "GET"]]) {
     assert.equal((await a.handlers.get(name)(a.request(method, {}))).status, 401);
   }
   assert.equal(a.reads(), 0);
   assert.equal(a.writes(), 0);
   assert.equal((await a.handlers.get("health")()).status, 200);
   assert.equal((await a.handlers.get("availability")(a.request("GET"))).status, 200);
+});
+
+test("CSRF header and exact origin checks protect every write and support linked SWA", async () => {
+  const a = api(), token = await a.login();
+  for (const [name, method] of [["authLogin", "POST"], ["authLogout", "POST"], ["bookingItem", "PUT"], ["bookingItem", "DELETE"], ["blocks", "POST"], ["blockItem", "DELETE"], ["authProfile", "PUT"], ["authPassword", "POST"], ["formDraft", "PUT"], ["formPublish", "POST"]]) {
+    assert.equal((await a.handlers.get(name)(a.request(method, {}, token, { "x-admin-request":"" }))).status, 403, name);
+    assert.equal((await a.handlers.get(name)(a.request(method, {}, token, { origin:"https://evil.example" }))).status, 403, name);
+  }
+  for (const extra of [
+    { origin:"https://site.example.evil", "x-forwarded-host":"site.example" },
+    { origin:"https://site.example", "x-forwarded-host":"site.example,evil.example" },
+    { origin:"https://site.example", "x-forwarded-host":"evil.example,site.example" },
+    { origin:"https://site.example:444", "x-forwarded-host":"site.example" }, { origin:"null" },
+    { "sec-fetch-site":"cross-site" }, { origin:"https://site.example", "x-forwarded-host":"site.example", "x-forwarded-proto":"https,http" }
+  ]) assert.equal((await a.handlers.get("authLogout")(a.request("POST", {}, token, extra))).status, 403);
+  const linked = a.request("POST", {}, token, { origin:"https://site.example", "x-forwarded-host":"site.example", "x-forwarded-proto":"https", host:"internal.azurewebsites.net" });
+  linked.url = "https://internal.azurewebsites.net/api/auth/logout";
+  assert.equal((await a.handlers.get("authLogout")(linked)).status, 200);
+  const noOrigin = a.request("POST", {}, token); noOrigin.headers.delete("origin");
+  assert.equal((await a.handlers.get("authLogout")(noOrigin)).status, 200);
+});
+
+test("profile/password use safe identity, record audit and invalidate old sessions", async () => {
+  const a = api(), token = await a.login();
+  const profile = await a.handlers.get("authProfile")(a.request("PUT", { displayName:"Test Display", email:"test@example.com", phone:"+1 555" }, token));
+  assert.equal(profile.status, 200); assert.equal(profile.jsonBody.profile.displayName, "Test Display");
+  assert.equal(profile.jsonBody.credentialVersion, undefined); assert.equal(profile.jsonBody.credential, undefined);
+  assert.equal((await a.handlers.get("authProfile")(a.request("GET", null, token))).jsonBody.profile.email, "test@example.com");
+  const password = await a.handlers.get("authPassword")(a.request("POST", { currentPassword:a.env.ADMIN_PASSWORD, newPassword:"replacement-test-password-123", confirmPassword:"replacement-test-password-123" }, token));
+  assert.equal(password.status, 200); assert.equal(password.jsonBody.ok, true); assert.equal(password.cookies[0].maxAge, 0);
+  assert.equal((await a.handlers.get("bookings")(a.request("GET", null, token))).status, 401);
+  const activity = await a.store.activity.list();
+  for (const action of ["profile.update", "password.change"]) assert.ok(activity.some(x => x.action === action && x.actor === a.env.ADMIN_USERNAME));
+  assert.equal(JSON.stringify(activity).includes("replacement-test-password"), false);
+  assert.equal(JSON.stringify(activity).includes("test@example.com"), false);
+});
+
+test("login issues credential snapshot; handler errors never leak backend details", async () => {
+  const a = api(); a.store.accounts.get = async () => { throw new Error("secret-storage-connection-password"); };
+  const result = await a.handlers.get("authLogin")(a.request("POST", { username:a.env.ADMIN_USERNAME, password:a.env.ADMIN_PASSWORD }));
+  assert.equal(result.status, 500); assert.equal(JSON.stringify(result).includes("secret-storage"), false);
+  const b = api(), token = await b.login(), payload = JSON.parse(Buffer.from(token.split(".")[0], "base64url"));
+  assert.equal(payload.v, 1); assert.equal(payload.u, b.env.ADMIN_USERNAME);
+});
+
+test("known account validation errors are actionable but input and backend secrets remain private", async () => {
+  const a = api(), token = await a.login();
+  for (const [name, method, input, expected] of [
+    ["authPassword", "POST", { currentPassword:"incorrect-test-secret", newPassword:"new-test-password-123", confirmPassword:"new-test-password-123" }, /Current password is incorrect/],
+    ["authPassword", "POST", { currentPassword:a.env.ADMIN_PASSWORD, newPassword:"short-secret", confirmPassword:"mismatch-secret" }, /12–128 characters/],
+    ["authProfile", "PUT", { email:"invalid-secret-email" }, /Invalid profile field/],
+    ["authProfile", "PUT", { role:"secret-admin" }, /Only displayName, email and phone/]
+  ]) {
+    const result = await a.handlers.get(name)(a.request(method, input, token));
+    assert.equal(result.status, 400); assert.match(result.jsonBody.error, expected);
+    assert.equal(JSON.stringify(result).includes("secret"), false);
+    assert.equal(JSON.stringify(result).includes(a.env.ADMIN_PASSWORD), false);
+  }
+  a.store.accounts.compareAndSwap = async () => { throw Object.assign(new Error("private-secret-storage"), { statusCode:400 }); };
+  const hidden = await a.handlers.get("authProfile")(a.request("PUT", { displayName:"Safe" }, token));
+  assert.equal(hidden.status, 400); assert.equal(JSON.stringify(hidden).includes("private-secret"), false);
 });

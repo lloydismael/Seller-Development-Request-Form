@@ -1,5 +1,7 @@
-(function () {
-  const CFG = window.FORM_CONFIG, Q = CFG.questions, S = window.BookingStore;
+(async function () {
+  const S = window.BookingStore, schema = window.FormSchema;
+  const preview = new URLSearchParams(location.search).get("preview") === "draft";
+  let CFG, Q, formVersion, loaded = false, stale = false, loading = false;
   const answers = {}, otherText = {};
   const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
@@ -16,7 +18,7 @@
   };
   const valueOf = id => {
     const v = answers[id] === "__other__" ? (otherText[id] || "").trim() : answers[id];
-    return Array.isArray(v) ? v.join("; ") : (v ?? "");
+    return Array.isArray(v) ? v.slice() : (v ?? "");
   };
   const cancelAuto = () => { clearTimeout(autoTimer); autoTimer = undefined; };
   const scheduling = id => id === "facilitator" || id === "time";
@@ -46,8 +48,8 @@
       seen.add(id); path.push(id);
       const q = Q[id], opts = (q.choices || []).map(choiceObj);
       if (opts.some(c => c.goto)) {
-        if (!isAnswered(id)) break;
-        id = opts.find(c => c.label === answers[id])?.goto || q.next;
+        if (!isAnswered(id) && q.required) break;
+        id = opts.find(c => c.label === valueOf(id))?.goto || q.next;
       } else id = q.next;
     }
     return path;
@@ -57,9 +59,9 @@
   function routeLengths(id = CFG.start, seen = new Set()) {
     if (!id || !Q[id] || seen.has(id)) return [0];
     const visited = new Set(seen).add(id), q = Q[id], opts = (q.choices || []).map(choiceObj);
-    const selected = opts.find(c => c.label === answers[id]);
+    const selected = opts.find(c => c.label === valueOf(id));
     const destinations = opts.some(c => c.goto)
-      ? (selected ? [selected.goto || q.next] : opts.map(c => c.goto || q.next)) : [q.next];
+      ? (selected ? [selected.goto || q.next] : [...opts.map(c => c.goto || q.next), ...(!q.required || q.allowOther ? [q.next] : [])]) : [q.next];
     return [...new Set(destinations.flatMap(dest => routeLengths(dest,visited).map(n => n+1)))];
   }
 
@@ -71,11 +73,11 @@
     fill.parentElement.setAttribute("aria-valuenow",String(percent));
     document.getElementById("progressText").textContent = lengths.length === 1 ? `${done} of ${total} answered` : `${done} answered`;
     container.querySelectorAll(".q-card").forEach(card => card.classList.toggle("done",isAnswered(card.dataset.id)));
-    submit.disabled = submitting;
+    submit.disabled = submitting || !loaded || preview || stale;
   }
 
   function tileInner(id,label) {
-    if (id === "facilitator" || /^sd_|^bo_|^bh_/.test(id)) {
+    if (Q[id].field === "facilitator" || Q[id].field === "director") {
       const code = codeOf(label);
       return `<span class="avatar" aria-hidden="true">${esc(initials(label))}</span><span class="t-body"><span class="t-label">${esc(nameOnly(label))}</span>${code ? `<span class="t-sub">${esc(code)}</span>` : ""}</span>`;
     }
@@ -83,17 +85,17 @@
       const [a,b] = label.split(/\s*-\s*/), range = S.slotRange(label), hrs = (range[1]-range[0])/60;
       return `<span class="t-icon" aria-hidden="true">${ICON.clock}</span><span class="t-body"><span class="t-label">${esc(a)} – ${esc(b)}</span><span class="t-sub">${hrs} hour${hrs === 1 ? "" : "s"}</span></span>`;
     }
-    if (id === "venue") {
+    if (Q[id].field === "venue") {
       const online = /^Online/i.test(label), parts = label.split(",").map(s => s.trim());
       return `<span class="t-icon ${online ? "online" : ""}" aria-hidden="true">${online ? ICON.video : ICON.pin}</span><span class="t-body"><span class="t-label">${esc(online ? label.replace(/^Online via\s*/i,"") : parts[0])}</span><span class="t-sub">${esc(online ? "Online" : parts.slice(1).join(", "))}</span></span>`;
     }
-    const m = id === "category" && label.match(/^(.*?)\s*\((.*)\)\s*$/);
+    const m = Q[id].field === "category" && label.match(/^(.*?)\s*\((.*)\)\s*$/);
     return `<span class="t-body"><span class="t-label">${esc(m ? m[1] : label)}</span>${m ? `<span class="t-sub">${esc(m[2])}</span>` : ""}</span>`;
   }
   function gridClass(id,q) {
-    if (id === "venue") return "tiles wide";
-    if (id === "facilitator" || /^sd_|^bo_|^bh_/.test(id)) return "tiles people";
-    if (id === "category") return "tiles md";
+    if (q.field === "venue") return "tiles wide";
+    if (q.field === "facilitator" || q.field === "director") return "tiles people";
+    if (q.field === "category") return "tiles md";
     return q.choices.length <= 4 ? "tiles sm" : "tiles";
   }
   function quickDates() {
@@ -107,14 +109,16 @@
   function renderQuestion(id,num) {
     const q = Q[id], card = document.createElement("section");
     card.className = "q-card"; card.dataset.id = id;
-    const hint = q.type === "multi" ? (q.max ? `Select up to ${q.max}` : "Select all that apply") : "";
-    let html = `<header class="q-head"><span class="q-num">${num}</span><h2 class="q-title" id="title-${id}" tabindex="-1">${esc(q.title)}${q.required ? ' <span class="req" aria-label="required">*</span>' : ""}</h2><span class="q-done" aria-hidden="true">${ICON.check}</span></header><p class="hint" id="hint-${id}">${scheduling(id) ? '<span class="avail-hint" role="status"></span>' : hint}</p>`;
+    const hint = q.type === "multi" ? [q.min ? `Select at least ${q.min}` : "", q.max ? `Select up to ${q.max}` : "Select all that apply"].filter(Boolean).join(". ") : "";
+    let html = `<header class="q-head"><span class="q-num">${num}</span><h2 class="q-title" id="title-${id}" tabindex="-1">${esc(q.title)}${q.required ? ' <span class="req" aria-label="required">*</span>' : ""}</h2><span class="q-done" aria-hidden="true">${ICON.check}</span></header><p class="hint" id="hint-${id}">${scheduling(id) ? '<span class="avail-hint" role="status"></span>' : esc(hint)}</p><p class="hint" id="help-${id}">${esc(q.help || "")}</p>`;
     if (scheduling(id)) html += '<button type="button" class="btn retry-btn" hidden>Retry availability</button>';
-    const attrs = `aria-labelledby="title-${id}" aria-describedby="hint-${id} error-${id}" ${q.required ? 'aria-required="true"' : ""}`;
-    if (id === "participants") {
-      html += `<div class="qty"><input type="number" min="1" step="1" inputmode="numeric" class="text-in qty-in" placeholder="e.g. 25" value="${esc(answers[id] || "")}" ${attrs}><div class="chips">${[10,20,30,50,100].map(n => `<button type="button" class="chip ${answers[id] == n ? "on" : ""}" data-qty="${n}" aria-label="${n} participants" aria-pressed="${answers[id] == n}">${n}</button>`).join("")}</div></div>`;
-    } else if (q.type === "text") {
-      html += id === "recommendations" ? `<textarea class="text-in" rows="3" placeholder="Type your answer" ${attrs}>${esc(answers[id] || "")}</textarea>` : `<input type="text" class="text-in" placeholder="Type your answer" autocomplete="${id === "name" ? "name" : "off"}" value="${esc(answers[id] || "")}" ${attrs}>`;
+    const attrs = `aria-labelledby="title-${id}" aria-describedby="hint-${id} help-${id} error-${id}" ${q.required ? 'aria-required="true"' : ""}`;
+    const placeholder = esc(q.placeholder ?? "Type your answer");
+    if (["text", "textarea", "email", "number"].includes(q.type)) {
+      const bounds = q.type === "number" ? `min="${q.min ?? (q.field === "participants" ? 1 : -1000000)}" max="${q.max ?? 1000000}" step="${q.field === "participants" ? "1" : "any"}"` : 'maxlength="200"';
+      html += q.type === "textarea" ? `<textarea class="text-in" rows="3" maxlength="2000" placeholder="${placeholder}" ${attrs}>${esc(answers[id] ?? "")}</textarea>` : `<input type="${q.type}" class="text-in" ${bounds} placeholder="${placeholder}" autocomplete="${q.type === "email" ? "email" : q.field === "requestor" ? "name" : "off"}" value="${esc(answers[id] ?? "")}" ${attrs}>`;
+    } else if (q.type === "date" && id !== "date") {
+      html += `<input type="date" class="text-in" value="${esc(answers[id] || "")}" ${attrs}>`;
     } else if (q.type === "date") {
       const cur = answers[id];
       html += `<div class="date-tiles" role="group" aria-labelledby="title-${id}" aria-describedby="error-${id}">${quickDates().map(d => {
@@ -128,7 +132,7 @@
         const checked = multi ? (cur || []).includes(c.label) : cur === c.label;
         html += `<label class="tile ${checked ? "on" : ""}"><input type="${multi ? "checkbox" : "radio"}" name="${id}" value="${esc(c.label)}" aria-label="${esc(c.label)}" ${checked ? "checked" : ""} aria-describedby="hint-${id} error-${id}">${tileInner(id,c.label)}<span class="tag" hidden></span><span class="tick" aria-hidden="true">${ICON.check}</span></label>`;
       });
-      if (q.allowOther) html += `<div class="tile other ${cur === "__other__" ? "on" : ""}"><input type="radio" id="other-radio-${id}" name="${id}" value="__other__" aria-labelledby="other-label-${id}" aria-describedby="error-${id}" ${cur === "__other__" ? "checked" : ""}><span class="t-body"><label class="t-label" id="other-label-${id}" for="other-radio-${id}">Other venue</label><input type="text" class="other-in" placeholder="Type the venue" aria-label="Other venue" aria-describedby="error-${id}" value="${esc(otherText[id] || "")}"></span><span class="tick" aria-hidden="true">${ICON.check}</span></div>`;
+      if (q.allowOther) html += `<div class="tile other ${cur === "__other__" ? "on" : ""}"><input type="radio" id="other-radio-${id}" name="${id}" value="__other__" aria-labelledby="other-label-${id}" aria-describedby="help-${id} error-${id}" ${cur === "__other__" ? "checked" : ""}><span class="t-body"><label class="t-label" id="other-label-${id}" for="other-radio-${id}">Other</label><input type="text" class="other-in" maxlength="200" placeholder="${esc(q.placeholder || "Specify another answer")}" aria-label="${esc(q.title)} — Other" aria-describedby="help-${id} error-${id}" value="${esc(otherText[id] || "")}"></span><span class="tick" aria-hidden="true">${ICON.check}</span></div>`;
       html += "</div>";
       if (multi && q.max) html += `<p class="counter">${(cur || []).length} of ${q.max} selected</p>`;
     }
@@ -138,7 +142,22 @@
 
   function render() {
     cancelAuto();
-    container.replaceChildren(...visiblePath().map((id,i) => renderQuestion(id,i+1)));
+    const path = visiblePath(), active = new Set(path), nodes = [];
+    Object.keys(answers).forEach(id => { if (!active.has(id)) { delete answers[id]; delete otherText[id]; } });
+    let section;
+    // order is presentation metadata, not permission to rewrite the validated graph.
+    path.forEach((id, i) => {
+      const next = Q[id].section;
+      if (next && next !== section) {
+        const definition = CFG.sections.find(s => s.id === next);
+        const heading = document.createElement("header"); heading.className = "form-section";
+        const title = document.createElement("h2"); title.textContent = definition.title; heading.append(title);
+        if (definition.description) { const description = document.createElement("p"); description.textContent = definition.description; heading.append(description); }
+        nodes.push(heading);
+      }
+      section = next; nodes.push(renderQuestion(id,i+1));
+    });
+    container.replaceChildren(...nodes);
     syncOptions(); updateProgress();
   }
 
@@ -160,13 +179,21 @@
   }
 
   function invalidReason(id) {
-    if (Q[id].required && !isAnswered(id)) return "Please answer this question to continue.";
+    const q = Q[id], value = valueOf(id);
+    if (!isAnswered(id)) return q.required ? "Please answer this question to continue." : "";
+    if (q.type === "number" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 1000000 || (q.min !== undefined && value < q.min) || (q.max !== undefined && value > q.max) || (q.field === "participants" && (!Number.isSafeInteger(value) || value < 1)))) return "Enter a valid number within the allowed bounds" + (q.field === "participants" ? " (positive whole participants)." : ".");
+    if (q.type === "multi" && (!Array.isArray(value) || new Set(value).size !== value.length || value.some(v => !q.choices.map(choiceObj).some(c => c.label === v)) || value.length < (q.min || 0) || value.length > (q.max || q.choices.length))) return "Choose the allowed number of listed options.";
+    if (!["number", "multi"].includes(q.type)) {
+      if (typeof value !== "string" || !value.trim() || value.length > (q.type === "textarea" ? 2000 : 200) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f<>]/.test(value)) return "Enter plain text within the allowed length; HTML is not supported.";
+      if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Enter a valid email address.";
+      if (q.type === "date" && !schema.validDate(value)) return "Enter a valid calendar date.";
+      if (q.type === "choice" && !q.allowOther && !q.choices.map(choiceObj).some(c => c.label === value.trim())) return "Choose a listed option.";
+    }
     if (id === "date" && !validDate(answers.date)) return "Choose today or a future training date.";
     if (scheduling(id) && !availabilityReady()) return availabilityState === "error" ? "Availability couldn’t be checked. Please retry or choose another date." : "Please wait while we check availability.";
     if (id === "facilitator" && (avail?.blocked || []).includes(answers.facilitator)) return "Choose an available facilitator.";
     if (id === "time" && !isAnswered("facilitator")) return "Choose a facilitator first.";
     if (id === "time" && (avail?.busy || []).some(b => b.facilitator === answers.facilitator && S.overlaps(b.time,answers.time))) return "Choose an available time.";
-    if (id === "participants" && (!Number.isSafeInteger(Number(answers[id])) || Number(answers[id]) < 1)) return "Enter a positive whole number of participants.";
     return "";
   }
   function showError(card,message) {
@@ -176,15 +203,9 @@
 
   // Answer invalidation must work even when scheduling cards are off-screen.
   function reconcileAvailability() {
-    if (!availabilityReady()) return;
-    let invalidated = false;
-    if ((avail.blocked || []).includes(answers.facilitator)) {
-      delete answers.facilitator; delete answers.time; invalidated = true;
-    }
-    if (answers.time && (avail.busy || []).some(b => b.facilitator === answers.facilitator && S.overlaps(b.time,answers.time))) {
-      delete answers.time; invalidated = true;
-    }
-    if (invalidated) cancelAuto();
+    // Availability can change after selection. Keep the answer visible and report
+    // invalidReason instead of silently resetting the user's selected slot.
+    if (availabilityReady() && (invalidReason("facilitator") || invalidReason("time"))) cancelAuto();
   }
   async function loadAvailability() {
     const d = answers.date, version = ++requestVersion;
@@ -228,13 +249,13 @@
     });
     const counter = card.querySelector(".counter"); if (counter) counter.textContent = `${(answers[id] || []).length} of ${q.max} selected`;
     card.querySelectorAll(".chip").forEach(chip => {
-      const selected = chip.dataset.qty === answers[id]; chip.classList.toggle("on",selected); chip.setAttribute("aria-pressed",String(selected));
+      const selected = Number(chip.dataset.qty) === answers[id]; chip.classList.toggle("on",selected); chip.setAttribute("aria-pressed",String(selected));
     });
     });
     updateProgress();
   }
   function clearError(card) {
-    card.querySelector(".err").hidden = true; card.classList.remove("invalid"); error.hidden = true;
+    card.querySelector(".err").hidden = true; card.classList.remove("invalid");
     card.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
   }
 
@@ -242,16 +263,29 @@
     const card = e.target.closest("[data-id]"); if (!card || submitting) return;
     const id = card.dataset.id, q = Q[id]; cancelAuto();
     if (e.target.classList.contains("other-in")) {
-      otherText[id] = e.target.value; answers[id] = "__other__"; syncOptions();
+      const before = visiblePath().join("|");
+      otherText[id] = e.target.value; answers[id] = "__other__";
+      if (before !== visiblePath().join("|")) {
+        const position = e.target.selectionStart;
+        render();
+        const input = container.querySelector(`[data-id="${id}"] .other-in`);
+        input.focus({ preventScroll:true }); input.setSelectionRange(position,position);
+        return;
+      }
+      syncOptions();
     } else if (q.type === "date") {
       // Invalidate immediately, even before the date input's change event.
       if (answers[id] !== e.target.value) {
-        answers[id] = e.target.value; cancelAuto(); ++requestVersion;
-        avail = null; availabilityState = "idle"; syncOptions();
+        answers[id] = e.target.value;
+        if (id === "date") { cancelAuto(); ++requestVersion; avail = null; availabilityState = "idle"; }
+        if (id === "date") loadAvailability();
+        else syncOptions();
       }
+      clearError(card); updateProgress();
       return;
-    } else if (q.type === "text") {
-      answers[id] = e.target.value; syncOptions();
+    } else if (["text", "textarea", "email", "number"].includes(q.type)) {
+      answers[id] = q.type === "number" ? (e.target.value === "" ? "" : e.target.valueAsNumber) : e.target.value;
+      syncOptions();
     }
     clearError(card); updateProgress();
   });
@@ -259,6 +293,7 @@
     const card = e.target.closest("[data-id]"); if (!card || submitting || e.target.disabled) return;
     const id = card.dataset.id, q = Q[id]; cancelAuto();
     if (e.target.classList.contains("date-in")) { setDate(e.target.value); return; }
+    if (q.type === "date") { answers[id] = e.target.value; clearError(card); updateProgress(); return; }
     if (e.target.type === "checkbox") {
       const checked = [...card.querySelectorAll('input[type="checkbox"]:checked')];
       if (q.max && checked.length > q.max) { e.target.checked = false; return; }
@@ -274,7 +309,7 @@
     } else return;
     syncOptions(); clearError(card); updateProgress();
     if (e.target.value === "__other__") { card.querySelector(".other-in").focus(); return; }
-    if (e.target.type === "radio" || (q.choices.length === 1 && isAnswered(id))) goNext(id);
+    if (e.target.type === "radio" || (q.choices?.length === 1 && isAnswered(id))) goNext(id);
   });
   function setDate(ds) {
     if (submitting) return;
@@ -291,7 +326,7 @@
     const date = e.target.closest(".date-tile"); if (date) { setDate(date.dataset.date); return; }
     const chip = e.target.closest(".chip");
     if (chip) {
-      answers[card.dataset.id] = chip.dataset.qty; card.querySelector(".qty-in").value = chip.dataset.qty;
+      answers[card.dataset.id] = Number(chip.dataset.qty); card.querySelector(".qty-in").value = chip.dataset.qty;
       clearError(card); syncOptions(); goNext(card.dataset.id);
     }
     const other = e.target.closest(".tile.other");
@@ -306,7 +341,7 @@
     if (card && isAnswered(card.dataset.id)) goNext(card.dataset.id);
   });
   form.addEventListener("submit",async e => {
-    e.preventDefault(); cancelAuto(); if (submitting) return;
+    e.preventDefault(); cancelAuto(); if (submitting || preview || stale || !loaded) return;
     syncOptions(); error.hidden = true;
     const path = visiblePath(); let firstBad;
     path.forEach(id => {
@@ -319,22 +354,32 @@
       (firstBad.querySelector('input:checked:not(:disabled),textarea,input:not(:disabled)') || firstBad.querySelector(".q-title")).focus({ preventScroll:true });
       return;
     }
-    const rec = { answers:{} };
-    path.forEach(id => { const v = valueOf(id); rec.answers[Q[id].title] = v; if (Q[id].field) rec[Q[id].field] = v; });
+    const answerValues = {};
+    path.forEach(id => { if (isAnswered(id)) answerValues[id] = valueOf(id); });
+    let validated;
+    try { validated = schema.submission(CFG, answerValues); }
+    catch (err) { error.textContent = err.message; error.hidden = false; error.focus(); return; }
+    const rec = { formVersion, answerValues:validated.answerValues };
     submitting = true; container.inert = true; form.setAttribute("aria-busy","true");
     container.querySelectorAll("input,textarea,button").forEach(el => el.disabled = true);
     error.hidden = true; updateProgress(); submit.textContent = "Submitting…";
     try {
-      await S.create(rec);
+      const saved = await S.create(rec);
       form.hidden = true; document.getElementById("progressWrap").hidden = true; document.getElementById("thanks").hidden = false;
-      document.getElementById("summary").innerHTML = Object.entries(rec.answers).map(([k,v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+      const snapshot = saved?.answerSnapshot || validated.answerSnapshot;
+      document.getElementById("summary").innerHTML = snapshot.map(({title, value}) => `<tr><th scope="row">${esc(title)}</th><td>${esc(Array.isArray(value) ? value.join("; ") : value)}</td></tr>`).join("");
+      const warning = document.getElementById("saveWarning");
+      warning.textContent = saved?.warning || (saved?.auditRecorded === false ? "Booking saved, but activity recording failed. Do not resubmit this booking." : ""); warning.hidden = !warning.textContent;
       window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
       document.querySelector("#thanks h2").focus({ preventScroll:true });
     } catch (err) {
-      if (err.status === 409) {
-        delete answers.time; await loadAvailability();
-        error.textContent = `That slot is no longer available. ${err.message} Please choose another date, facilitator, or time.`;
-      } else error.textContent = `Submission failed: ${err.message}. Your answers are still here. Please try again.`;
+      if (err.status === 409 && ["FORM_EXPIRED", "FORM_VERSION_CONFLICT", "STALE_FORM"].includes(err.code)) {
+        stale = true; document.getElementById("refreshFormBtn").hidden = false;
+        error.textContent = `This form has changed. ${err.message} Load the latest form explicitly before submitting. Your current answers remain visible until you refresh.`;
+      } else if (err.status === 409) {
+        await loadAvailability();
+        error.textContent = `Scheduling conflict: ${err.message} Your selections have been retained. Choose an available date, facilitator, or time.`;
+      } else error.textContent = `Submission failed: ${err.message} Your answers are still here. No automatic retry was made.`;
       error.hidden = false; error.focus();
     } finally {
       submitting = false; container.inert = false; form.removeAttribute("aria-busy");
@@ -343,16 +388,55 @@
     }
   });
   document.getElementById("againBtn").addEventListener("click",() => {
-    if (submitting) return;
+    if (submitting || preview) return;
     cancelAuto(); ++requestVersion;
     Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
     avail = null; availabilityState = "idle"; error.hidden = true;
     document.getElementById("thanks").hidden = true; document.getElementById("progressWrap").hidden = false;
     form.hidden = false; render(); window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
-    container.querySelector(".text-in").focus({ preventScroll:true });
+    (container.querySelector(".text-in,.q-title") || container).focus({ preventScroll:true });
   });
-  document.getElementById("formTitle").textContent = CFG.title; document.title = CFG.title;
+  function applyTheme(theme) {
+    // Tokens have passed FormSchema.validate. No arbitrary style declarations.
+    const root = document.documentElement;
+    root.style.setProperty("--primary", theme.primary);
+    root.style.setProperty("--primary-2", theme.primary);
+    root.style.setProperty("--bg", theme.background);
+    const rgb = theme.primary.slice(1).match(/../g).map(c => parseInt(c,16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+    root.style.setProperty("--primary-ink", .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2] > .179 ? "#111827" : "#ffffff");
+    root.dataset.density = theme.density; root.dataset.width = theme.width; root.dataset.cardStyle = theme.cardStyle;
+  }
+  async function loadForm() {
+    if (loading || submitting) return;
+    loading = true; loaded = false; cancelAuto(); ++requestVersion;
+    form.hidden = true; submit.disabled = true; document.getElementById("progressWrap").hidden = true;
+    document.getElementById("thanks").hidden = true;
+    const panel = document.getElementById("formLoad"), message = document.getElementById("loadMessage"), retry = document.getElementById("retryFormBtn");
+    panel.hidden = false; panel.setAttribute("aria-busy","true"); message.textContent = preview ? "Loading authenticated draft preview…" : "Loading the published form…"; retry.hidden = true;
+    try {
+      if (!schema || !S) throw new Error("The shared form schema or transport could not be loaded.");
+      // Draft endpoint itself authenticates. No source/sessionStorage override.
+      const response = preview ? await S.formDraft() : await S.formConfig();
+      if (!response || typeof response.version !== "string" || !response.version || (preview && (typeof response.revision !== "string" || !response.revision))) throw new Error("Invalid form configuration response.");
+      const config = schema.validate(response.config);
+      CFG = config; Q = config.questions; formVersion = response.version;
+      Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
+      avail = null; availabilityState = "idle"; stale = false; loaded = true;
+      document.getElementById("refreshFormBtn").hidden = true; error.hidden = true;
+      document.getElementById("formTitle").textContent = CFG.title; document.title = preview ? `Draft preview — ${CFG.title}` : CFG.title;
+      applyTheme(CFG.theme); render(); panel.hidden = true; form.hidden = false;
+      document.getElementById("progressWrap").hidden = false;
+      document.getElementById("previewBanner").hidden = !preview;
+      submit.textContent = preview ? "Submissions disabled in preview" : "Submit request";
+    } catch (err) {
+      loaded = false; container.replaceChildren();
+      message.textContent = `The ${preview ? "authenticated draft" : "published form"} could not be loaded: ${err.message} The form is unavailable until loading succeeds.`;
+      retry.hidden = false;
+    } finally { loading = false; panel.setAttribute("aria-busy","false"); }
+  }
+  document.getElementById("retryFormBtn").addEventListener("click",loadForm);
+  document.getElementById("refreshFormBtn").addEventListener("click",loadForm);
   if (["localhost","127.0.0.1","[::1]"].includes(location.hostname) && new URLSearchParams(location.search).get("storage") === "local")
     document.querySelector(".admin-btn").href = "/admin/?storage=local";
-  render();
+  await loadForm();
 })();

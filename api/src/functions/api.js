@@ -2,18 +2,81 @@ const { app } = require("@azure/functions");
 const { randomUUID } = require("crypto");
 const store = require("../store");
 const { findConflicts, conflictMessage, isActive, inBlock } = require("../rules");
-const { isAdmin, adminUser, checkCredentials, issueToken, sessionCookie, TTL } = require("../auth");
+const { isAdmin, adminUser, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
+const forms = require("../forms");
+const audit = require("../audit");
+const { schema } = require("../form-assets-loader");
 
 const json = (status, body) => ({ status, jsonBody: body, headers: { "Cache-Control": "no-store" } });
 const DENIED = json(401, { error: "Administrator sign-in required." });
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ["Pending", "Approved", "Completed", "Rejected", "Cancelled"];
-const BOOKING_FIELDS = ["requestor", "division", "director", "category", "topic", "trainingDate", "facilitator", "time", "venue", "participants", "recommendations"];
 const EDITABLE = ["status", "trainingDate", "facilitator", "time", "venue", "participants", "topic", "adminNotes"];
-const clean = v => String(v ?? "").trim().slice(0, 2000);
-async function body(req) { try { return await req.json(); } catch { return null; } }
+const clean = v => {
+  if (v !== undefined && v !== null && typeof v !== "string")
+    throw Object.assign(new Error("Text fields must be strings."), { statusCode:400, expose:true });
+  return (v ?? "").trim().slice(0, 2000);
+};
+async function body(req) {
+  let value;
+  try { value = await req.json(); } catch { return null; }
+  schema.size(value);
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+const safeIdentity = who => who ? { id:who.id, user:who.user, provider:who.provider,
+  profile:{ displayName:who.profile?.displayName || "", email:who.profile?.email || "", phone:who.profile?.phone || "" } } : null;
 
-app.http("health", {
+// All browser admin writes (including login/logout) require a non-simple header.
+// A missing Origin is allowed for same-origin fetch/CLI; cross-origin requests
+// still cannot set this header without preflight. No permissive CORS is added.
+function sameOrigin(req) {
+  if (req.headers.get("x-admin-request") !== "1") return false;
+  if (req.headers.get("sec-fetch-site") === "cross-site") return false;
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin), requestUrl = new URL(req.url);
+    if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
+    // Linked SWA forwards its public host. Accept exactly one valid authority,
+    // never substring/suffix matches or attacker-selected comma-list entries.
+    const forwarded = req.headers.get("x-forwarded-host"), host = forwarded || req.headers.get("host") || requestUrl.host;
+    if (!host || host !== host.trim() || /[,\s/@\\?#]/.test(host)) return false;
+    const proto = req.headers.get("x-forwarded-proto") || requestUrl.protocol.slice(0, -1);
+    if (!["https", "http"].includes(proto)) return false;
+    const expected = new URL(proto + "://" + host);
+    return expected.host === host.toLowerCase() && parsed.origin === expected.origin;
+  } catch { return false; }
+}
+const privateRoutes = new Set(["bookingItem", "blocks", "blockItem", "authProfile", "authPassword", "formDraft", "formPublish", "activity"]);
+function http(name, definition) {
+  const handler = definition.handler;
+  app.http(name, { ...definition, handler:async (req, context) => {
+    try {
+      const privateRoute = privateRoutes.has(name) || (name === "bookings" && req.method === "GET");
+      if (privateRoute && !await isAdmin(req)) return DENIED;
+      if (!["GET", "HEAD"].includes(req?.method) && (privateRoute || name === "authLogin" || name === "authLogout") && !sameOrigin(req))
+        return json(403, { error:"Same-origin admin request required. Send X-Admin-Request: 1." });
+      return await handler(req, context);
+    } catch (e) {
+      const status = [400, 401, 409, 429, 503].includes(e.statusCode) ? e.statusCode : 500;
+      const messages = { 401:"Administrator sign-in required.", 409:"Record or form changed. Refresh the latest form/draft and retry. Bookings require its formVersion and stable-ID answerValues.", 429:"Too many attempts; retry later.", 503:"Backend unavailable. Retry later.", 500:"Unable to complete the request. Retry later." };
+      // Never log exceptions, bodies, cookies or credentials.
+      if (status >= 500) context?.error?.("API operation failed: " + name);
+      return json(status, { error:status === 400 ? (e.expose ? "Invalid request. " + String(e.message).slice(0, 300) : "Invalid request. Check the supplied fields and retry.") : status === 409 ? "Record changed. Reload the latest record/draft and retry." : messages[status],
+        ...(status === 409 ? { code:"RECORD_CONFLICT" } : {}) });
+    }
+  } });
+}
+async function audited(req, status, value, action, target, summary, actor) {
+  try { await audit.append(action, actor === undefined ? await adminUser(req) : actor, target, summary); }
+  catch {
+    // Separate collections cannot commit together. The operation is saved, not
+    // rolled back; the UI must display this warning and must not blindly retry.
+    return { ...json(status, { ...value, warning:"Mutation saved, but activity recording failed. Do not retry the mutation.", auditRecorded:false }), headers:{ "Cache-Control":"no-store", "X-Audit-Recorded":"false" } };
+  }
+  return json(status, value);
+}
+
+http("health", {
   methods: ["GET"], authLevel: "anonymous", route: "health",
   handler: async () => {
     try { await store.checkConnection(); return json(200, { ok:true, storage:store.kind }); }
@@ -22,67 +85,77 @@ app.http("health", {
 });
 
 // Public: submit a booking. Admin: list all bookings.
-app.http("bookings", {
+http("bookings", {
   methods: ["GET", "POST"], authLevel: "anonymous", route: "bookings",
   handler: async (req) => {
-    if (req.method === "GET") return isAdmin(req) ? json(200, await store.bookings.list()) : DENIED;
+    if (req.method === "GET") return await isAdmin(req) ? json(200, await store.bookings.list()) : DENIED;
 
     const b = await body(req);
     if (!b) return json(400, { error: "Invalid JSON body." });
-    const rec = {};
-    BOOKING_FIELDS.forEach(k => (rec[k] = clean(b[k])));
-    const missing = ["requestor", "division", "category", "trainingDate", "facilitator", "time", "venue"].filter(k => !rec[k]);
-    if (missing.length) return json(400, { error: "Missing required fields: " + missing.join(", ") });
-    if (!DATE_RE.test(rec.trainingDate)) return json(400, { error: "trainingDate must be YYYY-MM-DD." });
+    let rec;
+    try { rec = await forms.booking(b); }
+    catch (e) {
+      if (e.statusCode === 409) return json(409, { code:"FORM_EXPIRED", error:"This form is outdated. Refresh the published form and submit formVersion with answerValues." });
+      throw e;
+    }
+    // Date-only new bookings use UTC, independent of host/browser time zone.
+    // Admin edits below deliberately permit valid historical calendar dates.
+    if (rec.trainingDate < new Date().toISOString().slice(0, 10))
+      return json(400, { error:"Choose today or a future training date (UTC)." });
 
     const [all, blocks] = await Promise.all([store.bookings.list(), store.blocks.list()]);
     const c = findConflicts(all, blocks, rec);
-    if (c.length) return json(409, { error: conflictMessage(c) });
+    if (c.length) return json(409, { code:"SLOT_CONFLICT", error: conflictMessage(c) });
 
-    rec.answers = {};
-    if (b.answers && typeof b.answers === "object") Object.entries(b.answers).slice(0, 50).forEach(([k, v]) => (rec.answers[clean(k)] = clean(v)));
     Object.assign(rec, { id: randomUUID(), status: "Pending", adminNotes: "", createdAt: new Date().toISOString() });
+    schema.size(rec);
     await store.bookings.put(rec);
-    return json(201, rec);
+    return audited(req, 201, rec, "booking.create", rec.id, "Booking submitted", "anonymous");
   }
 });
 
 // Admin: update / delete a booking
-app.http("bookingItem", {
+http("bookingItem", {
   methods: ["PUT", "DELETE"], authLevel: "anonymous", route: "bookings/{id}",
   handler: async (req) => {
-    if (!isAdmin(req)) return DENIED;
+    if (!await isAdmin(req)) return DENIED;
     const id = req.params.id;
     const existing = await store.bookings.get(id);
     if (!existing) return json(404, { error: "Booking not found." });
 
-    if (req.method === "DELETE") { await store.bookings.remove(id); return json(200, { ok: true }); }
+    const actor = await adminUser(req);
+    if (req.method === "DELETE") { await store.bookings.remove(id); return audited(req, 200, { ok:true }, "booking.delete", id, "Booking deleted", actor); }
 
     const p = await body(req);
     if (!p) return json(400, { error: "Invalid JSON body." });
+    if (p.force !== undefined && typeof p.force !== "boolean") return json(400, { error:"force must be boolean." });
     const next = { ...existing };
-    EDITABLE.forEach(k => { if (p[k] !== undefined) next[k] = clean(p[k]); });
+    EDITABLE.forEach(k => {
+      if (p[k] !== undefined) next[k] = clean(k === "participants" && typeof p[k] === "number" && Number.isFinite(p[k]) ? String(p[k]) : p[k]);
+    });
     if (!STATUSES.includes(next.status)) return json(400, { error: "Invalid status." });
-    if (!DATE_RE.test(next.trainingDate)) return json(400, { error: "trainingDate must be YYYY-MM-DD." });
+    if (!schema.validDate(next.trainingDate)) return json(400, { error: "trainingDate must be a valid YYYY-MM-DD calendar date." });
+    if (!schema.validTime(next.time)) return json(400, { error:"Invalid training time range." });
 
     if (!p.force && isActive(next.status)) {
       const [all, blocks] = await Promise.all([store.bookings.list(), store.blocks.list()]);
       const c = findConflicts(all, blocks, next, id);
-      if (c.length) return json(409, { error: conflictMessage(c) });
+      if (c.length) return json(409, { code:"SLOT_CONFLICT", error: conflictMessage(c) });
     }
     next.updatedAt = new Date().toISOString();
-    next.updatedBy = adminUser(req) || "admin";
+    next.updatedBy = actor || "admin";
+    schema.size(next);
     await store.bookings.put(next);
-    return json(200, next);
+    return audited(req, 200, next, "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), actor);
   }
 });
 
 // Public: busy slots for a date (no personal data exposed)
-app.http("availability", {
+http("availability", {
   methods: ["GET"], authLevel: "anonymous", route: "availability",
   handler: async (req) => {
     const date = req.query.get("date") || "";
-    if (!DATE_RE.test(date)) return json(400, { error: "date must be YYYY-MM-DD." });
+    if (!schema.validDate(date)) return json(400, { error: "date must be YYYY-MM-DD." });
     const [all, blocks] = await Promise.all([store.bookings.list(), store.blocks.list()]);
     return json(200, {
       date,
@@ -93,51 +166,96 @@ app.http("availability", {
 });
 
 // Admin: blocked dates (leave / unavailability)
-app.http("blocks", {
+http("blocks", {
   methods: ["GET", "POST"], authLevel: "anonymous", route: "blocks",
   handler: async (req) => {
-    if (!isAdmin(req)) return DENIED;
+    if (!await isAdmin(req)) return DENIED;
     if (req.method === "GET") return json(200, await store.blocks.list());
     const b = await body(req);
     if (!b) return json(400, { error: "Invalid JSON body." });
     const rec = { facilitator: clean(b.facilitator), startDate: clean(b.startDate), endDate: clean(b.endDate || b.startDate), reason: clean(b.reason) };
-    if (!rec.facilitator || !DATE_RE.test(rec.startDate) || !DATE_RE.test(rec.endDate) || rec.endDate < rec.startDate)
+    if (!rec.facilitator || !schema.validDate(rec.startDate) || !schema.validDate(rec.endDate) || rec.endDate < rec.startDate)
       return json(400, { error: "facilitator and a valid date range are required." });
-    Object.assign(rec, { id: randomUUID(), createdAt: new Date().toISOString(), createdBy: adminUser(req) || "admin" });
+    const actor = await adminUser(req);
+    Object.assign(rec, { id: randomUUID(), createdAt: new Date().toISOString(), createdBy: actor || "admin" });
+    schema.size(rec);
     await store.blocks.put(rec);
-    return json(201, rec);
+    return audited(req, 201, rec, "block.create", rec.id, "Availability block created", actor);
   }
 });
 
-app.http("blockItem", {
+http("blockItem", {
   methods: ["DELETE"], authLevel: "anonymous", route: "blocks/{id}",
   handler: async (req) => {
-    if (!isAdmin(req)) return DENIED;
+    if (!await isAdmin(req)) return DENIED;
+    const actor = await adminUser(req);
     await store.blocks.remove(req.params.id);
-    return json(200, { ok: true });
+    return audited(req, 200, { ok:true }, "block.delete", req.params.id, "Availability block deleted", actor);
   }
 });
 
 // ---------- admin authentication ----------
-app.http("authLogin", {
+http("authLogin", {
   methods: ["POST"], authLevel: "anonymous", route: "auth/login",
   handler: async (req) => {
     const b = await body(req);
-    const u = clean(b && b.username), p = String((b && b.password) ?? "");
-    if (!checkCredentials(u, p)) {
+    const u = clean(b && b.username), p = (b && b.password) ?? "";
+    // Actual auth export takes (username, password), not req. Its snapshot must
+    // issue the token directly; no credential version reread after verification.
+    const who = await authenticateIdentity(u, p);
+    if (!who) {
       await new Promise(r => setTimeout(r, 600)); // slow down guessing
       return json(401, { error: "Invalid username or password." });
     }
-    return { ...json(200, { user: u }), cookies: [sessionCookie(req, issueToken(u), TTL)] };
+    return { ...json(200, safeIdentity(who)), cookies: [sessionCookie(req, issueToken(who.user, who.credentialVersion), TTL)] };
   }
 });
 
-app.http("authLogout", {
+http("authLogout", {
   methods: ["POST"], authLevel: "anonymous", route: "auth/logout",
   handler: async (req) => ({ ...json(200, { ok: true }), cookies: [sessionCookie(req, "", 0)] })
 });
 
-app.http("authMe", {
+http("authMe", {
   methods: ["GET"], authLevel: "anonymous", route: "auth/me",
-  handler: async (req) => json(200, { user: adminUser(req) })
+  handler: async (req) => json(200, safeIdentity(await getIdentity(req)) || { user:null })
+});
+
+http("authProfile", {
+  methods:["GET", "PUT"], authLevel:"anonymous", route:"auth/profile",
+  handler:async req => {
+    if (req.method === "GET") return json(200, safeIdentity(await getProfile(req)));
+    const actor = await adminUser(req), identity = safeIdentity(await updateProfile(req, await body(req)));
+    return audited(req, 200, identity, "profile.update", identity.id, "Profile updated", actor);
+  }
+});
+http("authPassword", {
+  methods:["POST"], authLevel:"anonymous", route:"auth/password",
+  handler:async req => {
+    const actor = await adminUser(req), identity = await changePassword(req, await body(req));
+    return { ...await audited(req, 200, { ok:true }, "password.change", identity.id, "Password changed; sessions invalidated", actor), cookies:[sessionCookie(req, "", 0)] };
+  }
+});
+http("formConfig", {
+  methods:["GET"], authLevel:"anonymous", route:"form-config",
+  handler:async () => json(200, await forms.published())
+});
+http("formDraft", {
+  methods:["GET", "PUT"], authLevel:"anonymous", route:"manage/form-draft",
+  handler:async req => {
+    if (req.method === "GET") return json(200, await forms.draft());
+    const actor = await adminUser(req), result = await forms.saveDraft(await body(req));
+    return audited(req, 200, result, "form.draft", result.revision, "Form draft saved", actor);
+  }
+});
+http("formPublish", {
+  methods:["POST"], authLevel:"anonymous", route:"manage/form-publish",
+  handler:async req => {
+    const actor = await adminUser(req), result = await forms.publish(await body(req));
+    return audited(req, 200, result, "form.publish", result.version, "Form published", actor);
+  }
+});
+http("activity", {
+  methods:["GET"], authLevel:"anonymous", route:"manage/activity",
+  handler:async req => json(200, await audit.list(req.query))
 });

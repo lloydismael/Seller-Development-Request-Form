@@ -1,9 +1,14 @@
 (async function () {
-  const S = window.BookingStore, Q = window.FORM_CONFIG.questions;
-  const FACS = Q.facilitator.choices.slice();
-  const TIMES = Q.time.choices.slice();
-  const CATS = Q.category.choices.map(c => c.label);
-  const VENUES = Q.venue.choices.slice();
+  const S = window.BookingStore;
+  const choiceLabel = c => typeof c === "string" ? c : c.label;
+  let Q, FACS = [], TIMES = [], CATS = [], VENUES = [], sourceConfig;
+  function applyConfig(config) {
+    sourceConfig = window.FormSchema.validate(config);
+    Q = sourceConfig.questions;
+    const choices = field => Object.values(Q).filter(q => q.field === field).flatMap(q => (q.choices || []).map(choiceLabel));
+    FACS = [...new Set(choices("facilitator"))]; TIMES = [...new Set(choices("time"))];
+    CATS = [...new Set(choices("category"))]; VENUES = [...new Set(choices("venue"))];
+  }
   const STATUSES = ["Pending", "Approved", "Completed", "Rejected", "Cancelled"];
   const PALETTE = ["#4f6bed", "#c239b3", "#0b8a5a", "#d4730c", "#8764b8", "#038387", "#a4262c"];
   const HALVES = [{ key: "AM", range: [540, 720] }, { key: "PM", range: [780, 1020] }];
@@ -26,7 +31,13 @@
   const active = b => S.isActive(b.status);
   const title = b => b.topic || b.category || "Training";
   const opts = (list, sel, blank) => (blank !== undefined ? `<option value="">${esc(blank)}</option>` : "") +
-    list.map(v => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(v)}</option>`).join("");
+    list.map(choiceLabel).map(v => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const historical = (list, value) => value && !list.includes(value) ? [value, ...list] : list;
+  const auditWarning = r => { if (r?.auditRecorded === false) {
+    const notice = document.createElement("div"); notice.className = "alert"; notice.setAttribute("role", "alert");
+    notice.textContent = "Change saved, but activity recording failed. Do not retry the saved change.";
+    $("#view").prepend(notice);
+  } };
 
   let bookings = [], blocks = [], mode = "local";
   const st = {
@@ -69,7 +80,7 @@
         try {
           const r = await S.login($("#lUser").value.trim(), $("#lPass").value);
           $("#gate").hidden = true; $("#lPass").value = "";
-          resolve(r.user);
+          resolve(r);
         } catch (err) {
           $("#loginErr").textContent = err.status === 401 ? "Invalid username or password." : err.message;
           $("#loginErr").hidden = false; $("#lPass").select();
@@ -90,20 +101,22 @@
     render();
   }
   async function saveBooking(id, patch) {
-    try { await S.update(id, patch); }
+    let result;
+    try { result = await S.update(id, patch); }
     catch (e) {
-      if (e.status !== 409) { alert(e.message); return false; }
+      if (e.status !== 409 || e.code !== "SLOT_CONFLICT") { alert(e.message); return false; }
       if (!confirm(`Scheduling conflict:\n\n${e.message}\n\nSave anyway?`)) return false;
-      await S.update(id, { ...patch, force: true });
+      try { result = await S.update(id, { ...patch, force: true }); }
+      catch (err) { alert(err.message); return false; }
     }
-    await reload(); toast("Booking updated"); return true;
+    await reload(); toast("Booking updated"); auditWarning(result); return true;
   }
 
   // ---------- shell ----------
-  let user;
+  let user, identity;
   try {
     mode = await S.mode();
-    user = (await S.me()).user;
+    identity = await S.me(); user = identity.user;
   }
   catch (err) {
     // Port 3000 is the static preview, not an API proxy. Use the local
@@ -120,12 +133,13 @@
     $("#loginBtn").textContent = "Retry connection";
     return;
   }
-  if (!user) user = await showLogin();
+  if (!user) { identity = await showLogin(); user = identity.user; }
   $("#app").hidden = false;
-  $("#userName").textContent = user;
+  $("#userName").textContent = identity.profile?.displayName || user;
   $("#modeBadge").textContent = mode === "api" ? "Live API" : "Local storage";
   $("#modeBadge").classList.toggle("local", mode !== "api");
   $("#logoutBtn").onclick = async () => {
+    if (!window.SettingsUI.canLeave()) return;
     const btn = $("#logoutBtn"); btn.disabled = true;
     try { await S.logout(); location.reload(); }
     catch { toast("Logout failed. Your session may still be active. Please retry."); }
@@ -133,10 +147,14 @@
   };
   if (mode === "local") {
     $("#devBar").hidden = false;
-    $("#seedBtn").onclick = () => { if (confirm("Replace local data with sample bookings?")) { seedSample(); reload(); } };
+    $("#seedBtn").onclick = () => { if (!window.SettingsUI.canLeave()) return; if (confirm("Replace local data with sample bookings?")) { seedSample(); reload(); } };
     $("#clearBtn").onclick = () => { if (confirm("Delete all locally stored bookings and blocked dates?")) { S.replaceLocal([], []); reload(); } };
   }
-  document.querySelectorAll(".tab").forEach(b => (b.onclick = () => { st.tab = b.dataset.tab; render(); }));
+  document.querySelectorAll(".tab").forEach(b => (b.onclick = () => {
+    if (b.dataset.tab === st.tab || !window.SettingsUI.canLeave()) return;
+    st.tab = b.dataset.tab; render();
+  }));
+  $(".user a").onclick = e => { if (!window.SettingsUI.canLeave()) e.preventDefault(); };
 
   $("#view").addEventListener("click", async e => {
     const t = e.target.closest("[data-act],[data-open],[data-day],[data-nav],[data-wnav],[data-delblock]");
@@ -152,13 +170,26 @@
     } else if (t.dataset.wnav) {
       const n = +t.dataset.wnav; st.week = n === 0 ? startOfWeek(new Date()) : addDays(st.week, 7 * n); render();
     } else if (t.dataset.delblock) {
-      if (confirm("Remove this blocked date?")) { await S.removeBlock(t.dataset.delblock); await reload(); toast("Blocked date removed"); }
+      if (confirm("Remove this blocked date?")) {
+        try { const r = await S.removeBlock(t.dataset.delblock); await reload(); toast("Blocked date removed"); auditWarning(r); }
+        catch (err) { toast(err.message); }
+      }
     }
   });
 
   function render() {
-    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === st.tab));
+    document.querySelectorAll(".tab").forEach(b => {
+      b.classList.toggle("active", b.dataset.tab === st.tab);
+      if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
     const v = $("#view");
+    if (["profile", "builder", "activity"].includes(st.tab)) {
+      window.SettingsUI.render(st.tab, v, { S, toast, mode, onPublished: result => applyConfig(result.config),
+        onProfile: account => { $("#userName").textContent = account.profile?.displayName || account.user; } });
+      return;
+    }
+    window.SettingsUI.deactivate();
+    if (!Q) { initialize(); return; }
     ({ dashboard, calendar, availability, bookings: bookingsView, blocks: blocksView })[st.tab](v);
   }
 
@@ -356,12 +387,14 @@
     if (!rows.length) return alert("Nothing to export.");
     const cols = [["Status", "status"], ["Training Date", "trainingDate"], ["Time", "time"], ["Facilitator", "facilitator"], ["Category", "category"],
       ["Topic", "topic"], ["Requestor", "requestor"], ["Division", "division"], ["Director / Officer / Head", "director"], ["Venue", "venue"],
-      ["Participants", "participants"], ["Recommendations", "recommendations"], ["Admin Notes", "adminNotes"], ["Submitted", "createdAt"], ["Booking ID", "id"]];
-    const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      ["Participants", "participants"], ["Recommendations", "recommendations"], ["Admin Notes", "adminNotes"], ["Submitted", "createdAt"], ["Booking ID", "id"],
+      ["Form version", "formVersion"], ["Custom answers JSON", "customAnswers"]];
+    const q = v => { let text = String(v ?? ""); if (/^[\s\u0000-\u001f]*[=+@-]|^[\t\r\n]/.test(text)) text = "'" + text; return `"${text.replace(/"/g, '""')}"`; };
+    rows = rows.map(r => ({ ...r, customAnswers: JSON.stringify(Array.isArray(r.answerSnapshot) ? r.answerSnapshot : r.answers || {}) }));
     const csv = [cols.map(c => q(c[0])).join(","), ...rows.map(r => cols.map(c => q(r[c[1]])).join(","))].join("\r\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
-    a.download = `bookings-${today}.csv`; a.click();
+    a.download = `bookings-${today}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
   // ---------- Blocked dates ----------
@@ -390,8 +423,13 @@
       const facs = $("#blFac").value === "All facilitators" ? FACS : [$("#blFac").value];
       const affected = bookings.filter(b => active(b) && facs.includes(b.facilitator) && b.trainingDate >= from && b.trainingDate <= to);
       if (affected.length && !confirm(`${affected.length} active booking(s) fall in this range and will be flagged as conflicts. Continue?`)) return;
-      for (const f of facs) await S.addBlock({ facilitator: f, startDate: from, endDate: to, reason });
-      await reload(); toast("Blocked date added");
+      let auditFailed = false;
+      const btn = $("#blAdd"); btn.disabled = true;
+      try {
+        for (const f of facs) { const r = await S.addBlock({ facilitator: f, startDate: from, endDate: to, reason }); auditFailed ||= r?.auditRecorded === false; }
+        await reload(); toast("Blocked date added"); if (auditFailed) auditWarning({ auditRecorded:false });
+      } catch (err) { toast("Could not finish adding blocked dates. Review the list before retrying: " + err.message); await reload(); if (auditFailed) auditWarning({ auditRecorded:false }); }
+      finally { btn.disabled = false; }
     };
   }
 
@@ -403,7 +441,9 @@
       "Training Category": b.category, "Topic": b.topic, "Expected Number of Participants": b.participants,
       "Request or Recommendations for the Training": b.recommendations
     };
-    const venueList = VENUES.includes(b.venue) ? VENUES : [b.venue, ...VENUES];
+    const answerRows = Array.isArray(b.answerSnapshot) ? b.answerSnapshot.map(a => [a.title, a.value, a.id]) : Object.entries(answers);
+    const answerText = value => Array.isArray(value) ? value.join("; ") : typeof value === "object" && value !== null ? JSON.stringify(value) : value;
+    const venueList = historical(VENUES, b.venue);
     openModal(`
       <h2>${esc(title(b))}</h2>
       <p class="muted">${esc(b.category)} · requested by ${esc(b.requestor)} · submitted ${b.createdAt ? new Date(b.createdAt).toLocaleString("en-PH") : "—"}
@@ -412,14 +452,15 @@
       <div class="form-grid">
         <label>Status<select id="eStatus">${opts(STATUSES, b.status)}</select></label>
         <label>Training date<input type="date" id="eDate" value="${esc(b.trainingDate)}"></label>
-        <label>Facilitator<select id="eFac">${opts(FACS, b.facilitator)}</select></label>
-        <label>Time<select id="eTime">${opts(TIMES, b.time)}</select></label>
+        <label>Facilitator<select id="eFac">${opts(historical(FACS, b.facilitator), b.facilitator)}</select></label>
+        <label>Time<select id="eTime">${opts(historical(TIMES, b.time), b.time)}</select></label>
         <label class="full">Venue<select id="eVenue">${opts(venueList, b.venue)}</select></label>
         <label class="full">Admin notes<textarea id="eNotes" placeholder="Internal notes (not visible to requestor)">${esc(b.adminNotes)}</textarea></label>
       </div>
       <div id="eConflict"></div>
       <h3 style="margin-top:14px">Original submission</h3>
-      <table class="kv">${Object.entries(answers).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>
+      ${b.formVersion ? `<p class="muted small">Form version: ${esc(b.formVersion)}</p>` : ""}
+      <table class="kv">${answerRows.map(([k, v, key]) => `<tr><th>${esc(k)}${key ? `<small class="answer-id">${esc(key)}</small>` : ""}</th><td>${esc(answerText(v))}</td></tr>`).join("")}</table>
       <div class="modal-actions">
         <button class="btn danger" id="eDelete">Delete</button><span class="spacer"></span>
         <button class="btn" id="eCancel">Close</button><button class="btn primary" id="eSave">Save changes</button>
@@ -438,7 +479,7 @@
     $("#eSave").onclick = async () => { if (await saveBooking(b.id, draft())) closeModal(); };
     $("#eDelete").onclick = async () => {
       if (!confirm("Permanently delete this booking?")) return;
-      try { await S.remove(b.id); closeModal(); await reload(); toast("Booking deleted"); } catch (e) { alert(e.message); }
+      try { const r = await S.remove(b.id); closeModal(); await reload(); toast("Booking deleted"); auditWarning(r); } catch (e) { alert(e.message); }
     };
   }
 
@@ -451,8 +492,11 @@
 
   // ---------- sample data (local mode only) ----------
   function seedSample() {
+    if (JSON.stringify(sourceConfig) !== JSON.stringify(window.FormSchema.validate(window.FORM_CONFIG))) {
+      toast("Sample data is available only with the original form schema."); return;
+    }
     const pick = a => a[Math.floor(Math.random() * a.length)];
-    const divisions = Q.division.choices.map(c => c.label);
+    const divisions = Q.division.choices.map(choiceLabel);
     const out = [], bl = [];
     const fac0 = FACS[0];
     const leave = ymd(addDays(new Date(), 6));
@@ -467,7 +511,7 @@
       const rec = {
         id: "sample-" + out.length, createdAt: new Date().toISOString(), adminNotes: "",
         requestor: pick(["Maria Santos", "Juan Dela Cruz", "Ana Reyes", "Mark Villanueva", "Grace Lim", "Paolo Garcia"]),
-        division: divisions[divIdx], director: pick(divQ.choices), category: catC.label, topic: pick(topicQ.choices),
+        division: divisions[divIdx], director: choiceLabel(pick(divQ.choices)), category: choiceLabel(catC), topic: choiceLabel(pick(topicQ.choices)),
         trainingDate: ymd(d), facilitator: pick(FACS), time: pick(TIMES), venue: pick(VENUES),
         participants: String(10 + Math.floor(Math.random() * 40)), recommendations: "N/A",
         status: ymd(d) < today ? pick(["Completed", "Completed", "Cancelled"]) : pick(["Pending", "Approved", "Approved", "Rejected"])
@@ -478,6 +522,14 @@
     S.replaceLocal(out, bl);
   }
 
-  st.tab = "dashboard";
-  await reload();
+  async function initialize() {
+    try {
+      applyConfig(mode === "api" ? (await S.formConfig()).config : window.FORM_CONFIG);
+      await reload();
+    } catch (err) {
+      $("#view").innerHTML = `<div class="alert" role="alert">Could not load form configuration: ${esc(err.message)}. No default configuration was substituted.</div><button class="btn" id="retryConfig">Retry configuration</button>`;
+      $("#retryConfig").onclick = initialize;
+    }
+  }
+  await initialize();
 })();

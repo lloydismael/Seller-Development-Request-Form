@@ -7,7 +7,8 @@
   "platform": { "apiRuntime": "node:20" },
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Content-Security-Policy": "frame-ancestors 'self'",
     "Referrer-Policy": "strict-origin-when-cross-origin"
   }
 }

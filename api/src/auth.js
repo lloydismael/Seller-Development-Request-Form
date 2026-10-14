@@ -6,7 +6,6 @@
  *   SESSION_SECRET  (default: dev value)  <-- set a long random string in production
  */
 const crypto = require("crypto");
-const USER = process.env.ADMIN_USERNAME || "admin";
 const PASS = process.env.ADMIN_PASSWORD || "Admin@123";
 const SECRET = process.env.SESSION_SECRET || "sdrf-dev-secret-change-me";
 const COOKIE = "sdrf_admin";
@@ -22,10 +21,16 @@ if (!process.env.ADMIN_PASSWORD || !process.env.SESSION_SECRET)
 const sign = s => crypto.createHmac("sha256", SECRET).update(s).digest("base64url");
 const eq = (a, b) => { const x = Buffer.from(String(a ?? "")), y = Buffer.from(String(b ?? "")); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
-function checkCredentials(u, p) { const okU = eq(u, USER), okP = eq(p, PASS); return okU && okP; }
+const accounts = require("./accounts");
+async function checkCredentials(u, p) { return accounts.authenticate(u, p); }
+// Login handlers should use this snapshot for issueToken(who.user, who.credentialVersion).
+// Re-reading a version after a boolean password check can race a password change.
+const authenticateIdentity = (u, p) => accounts.authenticateIdentity(u, p);
 
-function issueToken(user) {
-  const payload = Buffer.from(JSON.stringify({ u: user, exp: Math.floor(Date.now() / 1000) + TTL })).toString("base64url");
+function issueToken(user, version) {
+  if (typeof user !== "string" || !user || user.length > 256 || !Number.isSafeInteger(version) || version < 1)
+    throw new TypeError("A username and persisted credential version are required.");
+  const payload = Buffer.from(JSON.stringify({ u: user, v:version, exp: Math.floor(Date.now() / 1000) + TTL })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
@@ -35,7 +40,8 @@ function session(req) {
   if (m[1].split(".").length !== 2) return null;
   const [p, s] = m[1].split(".");
   if (!p || !s || !eq(sign(p), s)) return null;
-  try { const d = JSON.parse(Buffer.from(p, "base64url").toString("utf8")); return d.exp > Date.now() / 1000 ? d : null; }
+  try { const d = JSON.parse(Buffer.from(p, "base64url").toString("utf8")); return d && typeof d.u === "string" &&
+    Number.isSafeInteger(d.v) && d.v > 0 && Number.isSafeInteger(d.exp) && d.exp > Date.now() / 1000 ? d : null; }
   catch { return null; }
 }
 
@@ -46,14 +52,19 @@ function swaPrincipal(req) {
   try { return JSON.parse(Buffer.from(h, "base64").toString("utf8")); } catch { return null; }
 }
 
-function adminUser(req) {
+async function getIdentity(req) {
   const s = session(req);
-  if (s) return s.u;
-  const p = swaPrincipal(req);
-  return p && Array.isArray(p.userRoles) && p.userRoles.includes("admin") &&
-    typeof p.userDetails === "string" ? p.userDetails : null;
+  if (s) {
+    const who = await accounts.localIdentity(s.u, s.v);
+    if (who) return who;
+  }
+  return accounts.swaIdentity(swaPrincipal(req));
 }
-const isAdmin = req => !!adminUser(req);
+async function adminUser(req) { return (await getIdentity(req))?.user || null; }
+const isAdmin = async req => !!await adminUser(req);
+const getProfile = async req => getIdentity(req);
+const updateProfile = async (req, patch) => accounts.updateProfile(await getIdentity(req), patch);
+const changePassword = async (req, input) => accounts.changePassword(await getIdentity(req), input);
 
 function isHttps(req) {
   const proto = req.headers.get("x-forwarded-proto");
@@ -63,4 +74,4 @@ function isHttps(req) {
 const sessionCookie = (req, value, maxAge) =>
   ({ name: COOKIE, value, maxAge, path: "/", httpOnly: true, sameSite: "Strict", secure: isHttps(req) });
 
-module.exports = { checkCredentials, issueToken, adminUser, isAdmin, sessionCookie, TTL };
+module.exports = { checkCredentials, authenticateIdentity, issueToken, adminUser, isAdmin, getIdentity, getProfile, updateProfile, changePassword, sessionCookie, TTL };

@@ -4,10 +4,11 @@
  *  - "local" mode: falls back to browser localStorage (plain static server, UI testing only).
  */
 (function () {
-  const LS_B = "sdrf_bookings_v2", LS_BL = "sdrf_blocks_v1", SS_ADMIN = "sdrf_admin_session";
-  // Default admin credentials used ONLY in local (no-API) mode. In API mode the server checks
-  // ADMIN_USERNAME / ADMIN_PASSWORD (same defaults) – see api/src/auth.js.
+  const LS_B = "sdrf_bookings_v2", LS_BL = "sdrf_blocks_v1";
+  // Demo identity is memory-only. Never persist credentials or session overrides.
   const DEFAULT_ADMIN = { username: "admin", password: "Admin@123" };
+  let demoUser = null;
+  const preview = new URLSearchParams(location.search).get("preview") === "draft";
 
   // ---------- scheduling rules (keep in sync with api/src/rules.js) ----------
   function toMin(t) {
@@ -48,7 +49,13 @@
   const read = k => JSON.parse(localStorage.getItem(k) || "[]");
   const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-  const fail = (status, msg) => Object.assign(new Error(msg), { status });
+  const fail = (status, msg, metadata = {}) => Object.assign(new Error(msg), { status, ...metadata });
+  const unavailable = () => { throw fail(503, "Account settings, form drafts, publishing and activity are unavailable in browser demo mode. Use the authenticated API.", { code:"DEMO_UNAVAILABLE" }); };
+  const writable = () => { if (preview) throw fail(403, "Draft preview is read-only. Submissions and mutations are disabled.", { code:"PREVIEW_READ_ONLY" }); };
+  function defaultForm() {
+    if (!window.FormSchema || !window.FORM_CONFIG) throw fail(503, "Default form schema is unavailable.");
+    return { config:window.FormSchema.validate(window.FORM_CONFIG), version:"browser-demo-default" };
+  }
 
   const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   // Static UI testing is deliberately opt-in; full-stack local testing defaults to API.
@@ -69,15 +76,24 @@
       }));
   }
   async function api(method, url, body) {
+    if (!["GET", "HEAD"].includes(method)) writable();
     const r = await fetch(url, {
-      method, credentials: "same-origin",
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined
+      method, credentials: "same-origin", mode:"same-origin", cache:"no-store",
+      headers: { Accept:"application/json", ...(!["GET", "HEAD"].includes(method) ? { "X-Admin-Request":"1", "Content-Type":"application/json" } : {}) },
+      body: body !== undefined ? JSON.stringify(body) : undefined
     });
     const ct = r.headers.get("content-type") || "";
     const data = ct.includes("json") ? await r.json() : null;
     if (!r.ok || (!data && r.status !== 204 && method !== "DELETE")) {
-      throw fail(r.status, (data && data.error) || (r.status === 401 || r.status === 403 ? "Session expired – please log in again." : `Request failed (${r.status})`));
+      const message = (data && data.error) || (r.status === 401 || r.status === 403 ? "Session expired – please log in again." : `Request failed (${r.status})`);
+      // Current backend has a generic form/CAS 409 and a separate slot message.
+      // Prefer an explicit server code when available; do not mistake every 409 for a slot conflict.
+      const code = data?.code || (r.status === 409 ? (/^Record or form changed\./.test(message) || /formVersion|form is outdated|form changed.*latest form/i.test(message) ? "FORM_EXPIRED" : "SLOT_CONFLICT") : undefined);
+      throw fail(r.status, message, { code, response:data, retryAfter:r.headers.get("retry-after") });
+    }
+    if (data && r.headers.get("x-audit-recorded") === "false") {
+      data.auditRecorded = false;
+      data.warning ||= "Mutation saved, but activity recording failed. Do not retry the mutation.";
     }
     return data;
   }
@@ -87,14 +103,19 @@
     slotRange, overlaps, isActive, findConflicts, conflictMessage, availabilityFor, mode,
 
     async create(b) {
+      writable();
       if (await isApi()) return api("POST", "/api/bookings", b);
-      const all = read(LS_B), c = findConflicts(all, read(LS_BL), b);
-      if (c.length) throw fail(409, conflictMessage(c));
-      const rec = { ...b, id: uid(), status: "Pending", createdAt: new Date().toISOString(), adminNotes: "" };
+      const live = defaultForm();
+      if (b.formVersion !== live.version) throw fail(409, "The demo form expired. Refresh the form.", { code:"FORM_EXPIRED" });
+      const validated = window.FormSchema.submission(live.config, b.answerValues);
+      const all = read(LS_B), c = findConflicts(all, read(LS_BL), validated);
+      if (c.length) throw fail(409, conflictMessage(c), { code:"SLOT_CONFLICT" });
+      const rec = { ...validated, formVersion:live.version, id: uid(), status: "Pending", createdAt: new Date().toISOString(), adminNotes: "" };
       all.push(rec); write(LS_B, all); return rec;
     },
     async list() { return (await isApi()) ? api("GET", "/api/bookings") : read(LS_B); },
     async update(id, patch) {
+      writable();
       if (await isApi()) return api("PUT", `/api/bookings/${encodeURIComponent(id)}`, patch);
       const all = read(LS_B), i = all.findIndex(x => x.id === id);
       if (i < 0) throw fail(404, "Booking not found.");
@@ -105,6 +126,7 @@
       all[i] = next; write(LS_B, all); return next;
     },
     async remove(id) {
+      writable();
       if (await isApi()) return api("DELETE", `/api/bookings/${encodeURIComponent(id)}`);
       write(LS_B, read(LS_B).filter(x => x.id !== id));
     },
@@ -114,33 +136,58 @@
     },
     async listBlocks() { return (await isApi()) ? api("GET", "/api/blocks") : read(LS_BL); },
     async addBlock(x) {
+      writable();
       if (await isApi()) return api("POST", "/api/blocks", x);
       const rec = { ...x, id: uid(), createdAt: new Date().toISOString() };
       write(LS_BL, [...read(LS_BL), rec]); return rec;
     },
     async removeBlock(id) {
+      writable();
       if (await isApi()) return api("DELETE", `/api/blocks/${encodeURIComponent(id)}`);
       write(LS_BL, read(LS_BL).filter(x => x.id !== id));
     },
     // ---------- admin auth ----------
     defaultAdmin: DEFAULT_ADMIN,
     async login(username, password) {
+      writable();
       if (await isApi()) return api("POST", "/api/auth/login", { username, password });
       if (username === DEFAULT_ADMIN.username && password === DEFAULT_ADMIN.password) {
-        sessionStorage.setItem(SS_ADMIN, username); return { user: username };
+        demoUser = username; return { user: username, provider:"demo" };
       }
       throw fail(401, "Invalid username or password.");
     },
     async me() {
       if (await isApi()) return api("GET", "/api/auth/me");
-      return { user: sessionStorage.getItem(SS_ADMIN) };
+      return { user: demoUser, provider:"demo" };
     },
     async logout() {
-      if (await isApi()) await api("POST", "/api/auth/logout");
-      sessionStorage.removeItem(SS_ADMIN);
+      writable();
+      if (await isApi()) return api("POST", "/api/auth/logout", {});
+      demoUser = null; return { ok:true };
+    },
+    async profile() { return (await isApi()) ? api("GET", "/api/auth/profile") : unavailable(); },
+    async updateProfile(profile) { writable(); return (await isApi()) ? api("PUT", "/api/auth/profile", profile) : unavailable(); },
+    async changePassword(currentPassword, newPassword, confirmPassword) {
+      writable();
+      const body = typeof currentPassword === "object" ? currentPassword : { currentPassword, newPassword, confirmPassword };
+      return (await isApi()) ? api("POST", "/api/auth/password", body) : unavailable();
+    },
+    async formConfig() { return (await isApi()) ? api("GET", "/api/form-config") : defaultForm(); },
+    async formDraft() { return (await isApi()) ? api("GET", "/api/manage/form-draft") : unavailable(); },
+    async saveFormDraft(config, revision) {
+      writable();
+      return (await isApi()) ? api("PUT", "/api/manage/form-draft", { config, revision }) : unavailable();
+    },
+    async publishForm(revision) { writable(); return (await isApi()) ? api("POST", "/api/manage/form-publish", { revision }) : unavailable(); },
+    async activity(query = {}) {
+      if (!await isApi()) return unavailable();
+      const params = new URLSearchParams();
+      Object.entries(query).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") params.set(key, String(value)); });
+      return api("GET", `/api/manage/activity?${params}`);
     },
     // local-mode helpers (sample data / reset)
     replaceLocal(bookings, blocks) {
+      writable();
       if (!localOnly) throw fail(403, "Browser data replacement is available only in explicit local UI testing mode.");
       write(LS_B, bookings); write(LS_BL, blocks);
     }

@@ -6,7 +6,7 @@
  * field: structured booking field used by the admin portal / availability checks
  * Routing: choice.goto -> jump to question id; question.next -> default next.
  */
-window.FORM_CONFIG = {
+const FORM_CONFIG = {
   title: "Seller Development Request Form",
   start: "name",
   questions: {
@@ -118,7 +118,9 @@ window.FORM_CONFIG = {
         "Online via Microsoft Teams"
       ]
     },
-    participants: { title: "Expected Number of Participants", type: "text", required: true, field: "participants", next: "recommendations" },
-    recommendations: { title: "Request or Recommendations for the Training", type: "text", required: true, field: "recommendations" }
+    participants: { title: "Expected Number of Participants", type: "number", required: true, field: "participants", next: "recommendations" },
+    recommendations: { title: "Request or Recommendations for the Training", type: "textarea", required: true, field: "recommendations" }
   }
 };
+if (typeof module === "object" && module.exports) module.exports = FORM_CONFIG;
+if (typeof window === "object") window.FORM_CONFIG = FORM_CONFIG;

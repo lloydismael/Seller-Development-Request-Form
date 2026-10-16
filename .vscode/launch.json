@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Booking application (full stack)",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/.vscode/debug-local.cjs",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "autoAttachChildProcesses": true,
+            "killBehavior": "polite",
+            "skipFiles": ["<node_internals>/**"],
+            "serverReadyAction": {
+                "pattern": "BOOKING_READY (http://localhost:[0-9]+)",
+                "uriFormat": "%s",
+                "action": "debugWithEdge",
+                "webRoot": "${workspaceFolder}/app",
+                "killOnServerStop": true
+            }
+        }
+    ]
+}

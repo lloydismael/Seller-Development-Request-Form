@@ -2,6 +2,23 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Run booking full stack",
+			"type": "shell",
+			"command": "node",
+			"args": [".vscode/debug-local.cjs"],
+			"options": { "cwd": "${workspaceFolder}" },
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "booking",
+				"pattern": { "regexp": "^(?!)$", "file": 1, "message": 2 },
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "^.*Azure Functions Core Tools.*$",
+					"endsPattern": "^BOOKING_READY http://localhost:[0-9]+$"
+				}
+			}
+		},
+		{
 			"label": "Run Azure-backed booking application",
 			"type": "shell",
 			"command": "swa",

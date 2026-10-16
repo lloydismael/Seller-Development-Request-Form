@@ -244,6 +244,30 @@ using storage continuation tokens; it is not optimized for large histories.
 
 ## Run locally
 
+### VS Code Run and Debug (F5)
+
+Open this repository folder in VS Code, select **Booking application (full stack)**
+in **Run and Debug**, and press **F5**. The launcher starts the Functions API on
+7071 with its Node inspector on 9229, starts the SWA frontend on 4281, waits for
+readiness, and opens Edge with browser debugging at `http://localhost:4281/`.
+Set frontend breakpoints in `app/` and backend breakpoints in `api/src/`.
+The installed Node.js, Functions Core Tools v4 and SWA CLI must be on PATH;
+install the API dependencies as described in Option B below before the first run.
+
+Stop debugging to shut down the launcher and its service processes; start again
+with F5. Close the debug browser when finished. For running without the browser
+debugger, use **Terminal -> Run Task -> Run booking full stack** and stop its
+terminal with Ctrl+C. Existing separate run tasks remain available.
+If startup reports an occupied port, stop the existing API/frontend task or debug
+session first; the launcher never terminates a process merely because it owns a port.
+
+This workflow keeps `api/local.settings.json` unchanged. Your configured Azure
+Table endpoint still uses your Azure credentials and Table data permissions, and
+local requests use that configured storage, not an isolated test database.
+For alternate ports, set `BOOKING_API_PORT`, `BOOKING_WEB_PORT` and
+`BOOKING_INSPECT_PORT` in the launch configuration's `env` object; the defaults
+are 7071, 4281 and 9229. The browser URL follows the selected frontend port.
+
 ### Option A – quick UI test (no install)
 ```bash
 npx serve app        # or: cd app && python -m http.server 8080

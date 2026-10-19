@@ -12,6 +12,18 @@ test('desktop menu stays hidden and account actions use equal responsive dimensi
   assert.match(css, /\.user \.btn \{[^}]*width:100%;[^}]*min-height:44px; height:100%;/);
 });
 
+test('training and facilitator tabs have decorative, theme-aware icons', () => {
+  for (const tab of ['csat', 'facilitators']) {
+    const button = html.match(new RegExp(`<button class="tab" data-tab="${tab}">([\\s\\S]*?)</button>`));
+    assert.ok(button, `${tab} navigation button exists`);
+    assert.match(button[1], /<svg class="tab-icon"[^>]*viewBox="0 0 24 24"/);
+    assert.match(button[1], /stroke="currentColor"/);
+    assert.match(button[1], /aria-hidden="true" focusable="false"/);
+    assert.match(button[1], /<\/svg>[^<]+$/);
+  }
+  assert.match(css, /\.tab \.tab-icon \{[^}]*width:20px; height:20px; flex:none;/);
+});
+
 function navigation() {
   const ids = [...html.matchAll(/data-tab="([^"]+)"/g)].map(match => match[1]);
   function element(dataset = {}) {

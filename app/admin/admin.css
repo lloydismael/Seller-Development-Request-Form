@@ -38,6 +38,7 @@ a { color:var(--primary); }
 .tabs { display:flex; flex-direction:column; gap:5px; }
 .tab { display:flex; align-items:center; gap:12px; background:none; border:1px solid transparent; color:var(--ui-muted); padding:11px 12px; min-height:44px; text-align:left; font:inherit; cursor:pointer; border-radius:8px; }
 .tab span { width:20px; font-size:19px; line-height:1; text-align:center; flex:none; }
+.tab .tab-icon { width:20px; height:20px; flex:none; }
 .tab:hover { background:var(--ui-raised); color:var(--ui-text); }
 .tab.active { background:var(--ui-info-bg); color:var(--primary); border-color:var(--line); font-weight:700; box-shadow:inset 3px 0 var(--primary); }
 .user { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:center; gap:10px; font-size:12px; margin-top:auto; padding:24px 4px 0; }

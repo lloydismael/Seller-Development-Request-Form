@@ -60,8 +60,8 @@ async function getIdentity(req) {
   }
   return accounts.swaIdentity(swaPrincipal(req));
 }
-async function adminUser(req) { return (await getIdentity(req))?.user || null; }
-const isAdmin = async req => !!await adminUser(req);
+async function adminUser(req) { const who = await getIdentity(req); return who?.role === "admin" ? who.user : null; }
+const isAdmin = async req => (await getIdentity(req))?.role === "admin";
 const getProfile = async req => getIdentity(req);
 const updateProfile = async (req, patch) => accounts.updateProfile(await getIdentity(req), patch);
 const changePassword = async (req, input) => accounts.changePassword(await getIdentity(req), input);

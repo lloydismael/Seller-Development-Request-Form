@@ -8,7 +8,7 @@
   const option = (value, title, selected) => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(title)}</option>`;
   const select = (values, selected) => values.map(v => option(v, v, selected)).join("");
   const typeNames = { text:"Short text", textarea:"Long text", email:"Email", number:"Number", date:"Date", choice:"Single choice", multi:"Multiple choice" };
-  const actions = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish"];
+  const actions = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish", "facilitator.create", "facilitator.update", "training.complete", "training.accept", "training.decline", "attendee.create", "invitation.issue", "invitation.revoke", "sharing.rotate", "sharing.revoke", "sharing.reactivate"];
   let activeTab = "", generation = 0, busy = false, profileDirty = false;
   let draft = null, saved = "", selected = "", previewOpen = false;
   let activityQuery = { page:1, action:"", from:"" };

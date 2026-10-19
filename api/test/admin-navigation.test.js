@@ -28,8 +28,8 @@ function navigation() {
   const listeners = {};
   let allowed = true, leaveCalls = 0, renders = 0;
   const context = { document:{ querySelectorAll:() => tabs, addEventListener:(type, handler) => { listeners[type] = handler; } },
-    $:selector => nodes[selector], st:{ tab:'dashboard' }, mode:'local', S:{}, Q:{}, sourceConfig:{}, toast() {}, applyConfig() {}, accessibleActions() {},
-    window:{ SettingsUI:{ canLeave:() => { leaveCalls++; return allowed; }, deactivate() {}, render() { renders++; } } },
+    $:selector => nodes[selector], st:{ tab:'dashboard' }, identity:{ role:'admin' }, FACS:[], mode:'local', S:{}, Q:{}, sourceConfig:{}, toast() {}, applyConfig() {}, accessibleActions() {},
+    window:{ CsatUI:{ deactivate() {}, render() { renders++; } }, SettingsUI:{ canLeave:() => { leaveCalls++; return allowed; }, deactivate() {}, render() { renders++; } } },
     dashboard() { renders++; }, calendar() { renders++; }, availability() { renders++; }, bookingsView() { renders++; }, blocksView() { renders++; } };
   vm.createContext(context);
   const shell = source.slice(source.indexOf('  const pages ='), source.indexOf('  let user, identity;'));
@@ -46,7 +46,7 @@ test('admin loads one global shared theme control and preserves all nine destina
   for (const resource of ['/design-tokens.css', '/ui-controls.css', '/theme.js']) assert.ok(html.includes(resource));
   assert.ok(html.indexOf('/design-tokens.css') < html.indexOf('/admin/admin.css'));
   assert.match(html, /id="navToggle"[^>]*aria-expanded="false"[^>]*aria-controls="adminNav"/);
-  assert.deepEqual(navigation().tabs.map(tab => tab.dataset.tab), ['dashboard', 'calendar', 'availability', 'bookings', 'blocks', 'profile', 'builder', 'activity', 'settings']);
+  assert.deepEqual(navigation().tabs.map(tab => tab.dataset.tab), ['dashboard', 'calendar', 'availability', 'bookings', 'blocks', 'csat', 'facilitators', 'profile', 'builder', 'activity', 'settings']);
 });
 
 test('mobile navigation expands, selects every destination and updates current location', () => {
@@ -62,7 +62,15 @@ test('mobile navigation expands, selects every destination and updates current l
     assert.ok(n.nodes['#pageTitle'].textContent);
     assert.equal(n.tabs.filter(item => item.attrs['aria-current'] === 'page').length, 1);
   }
-  assert.deepEqual(n.counts(), { leaveCalls:8, renders:8 });
+  assert.deepEqual(n.counts(), { leaveCalls:10, renders:10 });
+});
+
+test('facilitator navigation cannot render administrator destinations', () => {
+  const n = navigation(); n.context.identity.role = 'facilitator'; n.context.st.tab = 'csat';
+  for (const tab of n.tabs.filter(t => !['csat', 'profile'].includes(t.dataset.tab))) {
+    tab.onclick(); assert.equal(n.context.st.tab, 'csat');
+  }
+  assert.match(source, /identity\?\.role === "facilitator"\) \{ render\(\); return; \}/);
 });
 
 test('dirty-state cancellation retains the active tab and expanded menu without rendering', () => {

@@ -96,7 +96,9 @@ async function table(name) {
 
 function entity(name, obj) {
   return { partitionKey:PK, rowKey:obj.id, data:JSON.stringify(obj),
-    ...(name === "bookings" && obj.ownerHash ? { ownerHash:obj.ownerHash, createdAt:obj.createdAt } : {}) };
+    ...(name === "bookings" && obj.ownerHash ? { ownerHash:obj.ownerHash, createdAt:obj.createdAt } : {}),
+    ...(obj.recordType ? { recordType:obj.recordType } : {}),
+    ...(obj.csatSession ? { csatSession:obj.csatSession } : {}) };
 }
 const newestFirst = (a, b) => a.createdAt === b.createdAt ? (a.id === b.id ? 0 : a.id > b.id ? -1 : 1) : a.createdAt > b.createdAt ? -1 : 1;
 
@@ -148,11 +150,41 @@ function collection(name) {
       } catch (e) { if (e.statusCode === 412 || e.statusCode === 404) throw conflict(); throw e; }
     },
     async list() {
-      if (kind === "file") return (await readDb())[name] || [];
+          if (kind === "file") return ((await readDb())[name] || []).filter(x => !x.recordType);
       const c = await table(name), out = [];
-      for await (const e of c.listEntities({ queryOptions: { filter: `PartitionKey eq '${PK}'` } })) out.push(JSON.parse(e.data));
-      return out;
-    },
+          for await (const e of c.listEntities({ queryOptions: { filter: `PartitionKey eq '${PK}'` } })) {
+            const value = JSON.parse(e.data);
+            if (!value.recordType) out.push(value);
+          }
+          return out;
+        },
+        async listRelated(sessionId, recordType = "csat-attendee") {
+          if (name !== "bookings" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId) || !["csat-attendee", "csat-response"].includes(recordType)) throw new TypeError("Invalid session query.");
+          if (kind === "file") return ((await readDb())[name] || []).filter(x => x.csatSession === sessionId && x.recordType === recordType);
+          const out = [];
+          for await (const e of (await table(name)).listEntities({ queryOptions:{ filter:`PartitionKey eq '${PK}' and csatSession eq '${sessionId}' and recordType eq '${recordType}'` } })) out.push(JSON.parse(e.data));
+          return out;
+        },
+        // One partition transaction coordinates booking state and invitation consumption.
+        async transact(operations) {
+          if (!Array.isArray(operations) || !operations.length || operations.length > 100 ||
+              new Set(operations.map(o => o.value?.id)).size !== operations.length ||
+              operations.some(o => !o.value?.id || (o.version !== null && (typeof o.version !== "string" || !o.version || o.version === "*")))) throw new TypeError("Invalid transaction.");
+          if (kind === "file") return withDb(db => {
+            for (const o of operations) {
+              const found = (db[name] || []).some(x => x.id === o.value.id);
+              if (o.version === null ? found : !found || fileVersion(db, name, o.value.id) !== o.version) throw conflict();
+            }
+            for (const o of operations) {
+              db[name] = (db[name] || []).filter(x => x.id !== o.value.id);
+              db[name].push(o.value); bumpVersion(db, name, o.value.id);
+            }
+          });
+          try {
+            await (await table(name)).submitTransaction(operations.map(o => o.version === null
+              ? ["create", entity(name, o.value)] : ["update", entity(name, o.value), "Replace", { etag:o.version }]));
+          } catch (e) { if ([404, 409, 412].includes(e.statusCode)) throw conflict(); throw e; }
+        },
     async get(id) {
       if (kind === "file") return ((await readDb())[name] || []).find(x => x.id === id) || null;
       try { const e = await (await table(name)).getEntity(PK, id); return JSON.parse(e.data); }

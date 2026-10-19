@@ -9,7 +9,15 @@ function harness() {
     const records = new Map(), clone = o => JSON.parse(JSON.stringify(o));
     return {
       records,
-      async list() { reads++; return [...records.values()].map(x => clone(x.value)); },
+      async list() { reads++; return [...records.values()].filter(x => !x.value.recordType).map(x => clone(x.value)); },
+      async listRelated(id, type = "csat-attendee") { return [...records.values()].filter(x => x.value.csatSession === id && x.value.recordType === type).map(x => clone(x.value)); },
+      async transact(operations) {
+        for (const o of operations) {
+          const current = records.get(o.value.id);
+          if (o.version === null ? current : !current || current.version !== o.version) throw Object.assign(new Error("CAS conflict"), { statusCode:409 });
+        }
+        for (const o of operations) { writes++; records.set(o.value.id, { value:clone(o.value), version:String(++version) }); }
+      },
       async get(id) { reads++; return records.has(id) ? clone(records.get(id).value) : null; },
       async getWithVersion(id) { reads++; return records.has(id) ? clone(records.get(id)) : null; },
       async put(value) { writes++; records.set(value.id, { value:clone(value), version:String(++version) }); return value; },

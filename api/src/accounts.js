@@ -73,16 +73,18 @@ async function reserve(id, operation) {
 async function authenticateIdentity(username, password) {
   if (typeof username !== "string" || username.length > 256 || !validPasswordInput(password)) return null;
   const initial = await bootstrap();
-  if (username !== initial.user) return null;
-  const account = await reserve(LOCAL_ID, "login");
+  const directory = await store.accounts.get("facilitator-directory");
+  const id = username === initial.user ? LOCAL_ID : directory?.users && Object.hasOwn(directory.users, username) ? directory.users[username] : null;
+  if (!id) return null;
+  const account = await reserve(id, "login");
   if (!account || !await verifyPassword(password, account.credential)) return null;
   for (let i = 0; i < 8; i++) {
-    const current = await store.accounts.getWithVersion(LOCAL_ID);
-    if (!current || current.value.credentialVersion !== account.credentialVersion ||
-        current.value.credential.hash !== account.credential.hash || current.value.role !== "admin" ||
+    const current = await store.accounts.getWithVersion(id);
+    if (!current || current.value.disabled || current.value.credentialVersion !== account.credentialVersion ||
+        current.value.credential.hash !== account.credential.hash || !["admin", "facilitator"].includes(current.value.role) ||
         current.value.provider !== "local" || current.value.username !== username) return null;
     const value = { ...current.value, attempts:{ ...current.value.attempts, login:{ startedAt:Date.now(), count:0 } } };
-    try { await store.accounts.compareAndSwap(LOCAL_ID, value, current.version); return identity(value); }
+    try { await store.accounts.compareAndSwap(id, value, current.version); return identity(value); }
     catch (e) { if (e.statusCode !== 409) throw e; }
   }
   return null;
@@ -90,13 +92,17 @@ async function authenticateIdentity(username, password) {
 async function authenticate(username, password) { return !!await authenticateIdentity(username, password); }
 function identity(account) {
   return { id:account.id, user:account.username, provider:account.provider,
+    role:account.role, facilitatorLabel:account.facilitatorLabel || "", disabled:!!account.disabled,
     credentialVersion:account.credentialVersion,
     profile:{ displayName:account.profile?.displayName || "", email:account.profile?.email || "", phone:account.profile?.phone || "" } };
 }
 async function localIdentity(user, version) {
   if (typeof user !== "string" || !Number.isSafeInteger(version) || version < 1) return null;
-  const account = await store.accounts.get(LOCAL_ID);
-  return account && account.role === "admin" && account.provider === "local" &&
+  const initial = await store.accounts.get(LOCAL_ID);
+  const directory = await store.accounts.get("facilitator-directory");
+  const id = initial?.username === user ? LOCAL_ID : directory?.users && Object.hasOwn(directory.users, user) ? directory.users[user] : null;
+  const account = id ? await store.accounts.get(id) : null;
+  return account && !account.disabled && ["admin", "facilitator"].includes(account.role) && account.provider === "local" &&
     account.username === user && account.credentialVersion === version ? identity(account) : null;
 }
 async function swaIdentity(principal) {
@@ -118,7 +124,7 @@ async function swaIdentity(principal) {
 async function owned(who) {
   if (!who || typeof who.id !== "string") throw fail("Authentication required.", 401);
   const current = await store.accounts.getWithVersion(who.id);
-  if (!current || current.value.role !== "admin" || current.value.provider !== who.provider ||
+  if (!current || current.value.disabled || !["admin", "facilitator"].includes(current.value.role) || current.value.provider !== who.provider ||
       current.value.credentialVersion !== who.credentialVersion) throw fail("Authentication required.", 401);
   return current;
 }
@@ -163,4 +169,39 @@ async function changePassword(who, input) {
   return identity(value); // No hash, salt, password or attempt state crosses this boundary.
 }
 
-module.exports = { bootstrap, authenticate, authenticateIdentity, localIdentity, swaIdentity, updateProfile, changePassword };
+async function manageFacilitators(who, input, id) {
+  const actor = await owned(who);
+  if (actor.value.role !== "admin") throw fail("Administrator required.", 403);
+  if (!input) return (await store.accounts.list()).filter(a => a.role === "facilitator").map(a => ({ ...identity(a), credentialVersion:undefined }));
+  if (typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "facilitatorLabel", "disabled"].includes(k))) throw validation("Invalid account fields.");
+  const registry = await store.accounts.getWithVersion("facilitator-directory");
+  const directory = registry?.value || { id:"facilitator-directory", users:{}, labels:{} };
+  const current = id ? await store.accounts.getWithVersion(id) : null;
+  if (id && (!current || current.value.role !== "facilitator")) throw fail("Account not found.", 404);
+  const username = current?.value.username || input.username;
+  const label = input.facilitatorLabel ?? current?.value.facilitatorLabel;
+  if (typeof username !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._@-]{2,99}$/.test(username) || ["constructor", "prototype", "__proto__"].includes(username)) throw validation("Use a unique username of 3–100 characters.");
+  if (typeof label !== "string" || !label.trim() || label.length > 200 || ["constructor", "prototype", "__proto__"].includes(label)) throw validation("Select a facilitator label.");
+  const initial = await bootstrap();
+  const accountId = current?.value.id || `fac-${crypto.randomUUID()}`;
+  if (username === initial.user || (Object.hasOwn(directory.users, username) && directory.users[username] !== accountId) || (Object.hasOwn(directory.labels, label) && directory.labels[label] !== accountId)) throw validation("Username or facilitator is already assigned.");
+  if (input.disabled !== undefined && typeof input.disabled !== "boolean") throw validation("disabled must be boolean.");
+  if ((!current || input.password !== undefined) && (typeof input.password !== "string" || input.password.length < 12 || input.password.length > 128)) throw validation("Password must contain 12–128 characters.");
+  const value = current ? { ...current.value } : { id:accountId, username, provider:"local", role:"facilitator", credentialVersion:1, profile:{ displayName:label, email:"", phone:"" }, createdAt:new Date().toISOString() };
+  if (input.password !== undefined) value.credential = await hashPassword(input.password);
+  if (current) value.credentialVersion++;
+  value.disabled = input.disabled ?? value.disabled ?? false;
+  value.facilitatorLabel = label; value.updatedAt = new Date().toISOString();
+  const next = { ...directory, users:{ ...directory.users, [username]:accountId }, labels:{ ...directory.labels } };
+  if (current?.value.facilitatorLabel !== label) delete next.labels[current?.value.facilitatorLabel];
+  next.labels[label] = accountId;
+  await store.accounts.transact([{ value:next, version:registry?.version ?? null }, { value, version:current?.version ?? null }]);
+  return { ...identity(value), credentialVersion:undefined };
+}
+async function assigned(who, booking) {
+  if (who?.role === "admin") return true;
+  if (who?.role !== "facilitator") return false;
+  const directory = await store.accounts.get("facilitator-directory");
+  return directory?.labels?.[booking.facilitator] === who.id && who.facilitatorLabel === booking.facilitator;
+}
+module.exports = { bootstrap, authenticate, authenticateIdentity, localIdentity, swaIdentity, updateProfile, changePassword, manageFacilitators, assigned };

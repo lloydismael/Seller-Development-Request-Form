@@ -2,7 +2,7 @@
  * Mutations commit first; append failure must be surfaced in their response. */
 const { randomUUID } = require("crypto");
 const store = require("./store");
-const ACTIONS = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish"];
+const ACTIONS = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish", "facilitator.create", "facilitator.update", "training.complete", "training.accept", "training.decline", "attendee.create", "invitation.issue", "invitation.revoke", "sharing.rotate", "sharing.revoke", "sharing.reactivate"];
 const safe = v => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 256);
 async function record(action, actor, target, summary) {
   if (!ACTIONS.includes(action)) throw new TypeError("Unknown audit action.");

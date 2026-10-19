@@ -26,6 +26,14 @@ function mockStore(env = {}) {
       if (old.etag !== options.etag) throw { statusCode:412 };
       rows.set(`${this.name}:${e.rowKey}`, { ...e, table:this.name, etag:`etag-${++this.sequence}` });
     }
+    async submitTransaction(operations) {
+      for (const [operation, e, mode, options] of operations) {
+        const old = rows.get(`${this.name}:${e.rowKey}`);
+        if (operation === "create" ? !!old : !old || old.etag !== options.etag) throw { statusCode:operation === "create" ? 409 : 412 };
+        if (operation === "update") assert.equal(mode, "Replace");
+      }
+      for (const [, e] of operations) rows.set(`${this.name}:${e.rowKey}`, { ...e, table:this.name, etag:`etag-${++this.sequence}` });
+    }
     async upsertEntity(e) { rows.set(`${this.name}:${e.rowKey}`, { ...e, table:this.name, etag:`etag-${++this.sequence}` }); }
     async deleteEntity(pk, id) { rows.delete(`${this.name}:${id}`); }
   }
@@ -37,6 +45,19 @@ function mockStore(env = {}) {
   vm.runInNewContext(source,context);
   return {store:context.module.exports,calls};
 }
+for (const backend of ["file", "table"]) test(`${backend} transactions atomically coordinate session and attendee writes`, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "csat-storage-")); directories.push(dir);
+  const { store } = mockStore(backend === "file" ? { STORAGE_TEST_FILE:path.join(dir, "db.json") } : { STORAGE_TABLE_ENDPOINT:"https://example.table.core.windows.net" });
+  await store.bookings.insert({ id:"session", status:"Approved" });
+  const row = await store.bookings.getWithVersion("session");
+  await store.bookings.transact([{ value:{ ...row.value, status:"Completed" }, version:row.version }, { value:{ id:"attendee", recordType:"csat-attendee", csatSession:"session" }, version:null }]);
+  assert.equal((await store.bookings.get("session")).status, "Completed");
+  assert.equal((await store.bookings.list()).length, 1);
+  await assert.rejects(store.bookings.transact([{ value:{ id:"session", status:"Cancelled" }, version:row.version }, { value:{ id:"second", recordType:"csat-attendee", csatSession:"session" }, version:null }]), e => e.statusCode === 409);
+  assert.equal(await store.bookings.get("second"), null);
+  assert.equal((await store.bookings.get("session")).status, "Completed");
+});
+
 test("endpoint credentials take precedence over legacy key configuration",async () => {
   const {store,calls} = mockStore({STORAGE_TABLE_ENDPOINT:"https://example.table.core.windows.net/",STORAGE_CONNECTION_STRING:"unused"});
   await store.checkConnection(); assert.equal(store.kind,"table"); assert.equal(calls.length,5); assert.equal(calls[0].credential.constructor.name,"DefaultAzureCredential");

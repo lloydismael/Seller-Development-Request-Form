@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "Seller Development booking API (Azure Functions linked to Static Web Apps)",
   "main": "src/functions/*.js",
-  "scripts": { "build": "node -e \"const fs=require('node:fs'); if(fs.existsSync('scripts/build-form-assets.js')) require('./scripts/build-form-assets').build(); else { require('./src/form-assets/form-config'); require('./src/form-assets/form-schema'); }\"",  "start": "func start", "test": "node --test test/*.test.js", "migrate": "node scripts/migrate-storage.js" },
+  "scripts": { "build": "node -e \"const fs=require('node:fs'); if(fs.existsSync('scripts/build-form-assets.js')) require('./scripts/build-form-assets').build(); else { require('./src/form-assets/form-config'); require('./src/form-assets/form-schema'); require('./src/form-assets/csat-config'); require('./src/form-assets/csat-schema'); }\"",  "build:qr": "node scripts/build-qr-assets.js", "start": "func start", "test": "node --test test/*.test.js", "migrate": "node scripts/migrate-storage.js" },
   "engines": { "node": ">=22" },
+  "devDependencies": { "qrcode-generator":"2.0.4", "jsqr":"1.4.0" },
   "dependencies": {
     "@azure/data-tables": "^13.2.2",
     "@azure/identity": "^4.13.0",

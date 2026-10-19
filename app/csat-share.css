@@ -1,0 +1,5 @@
+.csat-sharing { margin:20px 0; padding:20px; border:1px solid var(--ui-border); border-radius:16px; background:var(--ui-surface); }
+.csat-sharing label { display:block; color:var(--ui-text); }
+.csat-sharing input { width:100%; min-height:44px; margin:8px 0; padding:10px; background:var(--ui-bg); color:var(--ui-text); border:1px solid var(--ui-border); border-radius:10px; }
+.csat-sharing .btn { margin:4px 8px 4px 0; }
+.csat-qr { display:block; width:min(100%,300px); height:auto; margin:16px auto; background:#fff; image-rendering:pixelated; border:8px solid #fff; }

@@ -93,6 +93,7 @@
   // ---------- data ----------
   async function reload() {
     try {
+      if (identity?.role === "facilitator") { render(); return; }
       [bookings, blocks] = await Promise.all([S.list(), S.listBlocks()]);
     } catch (e) {
       if (e.status === 401) { location.reload(); return; }
@@ -120,6 +121,8 @@
     availability: ["Facilitator availability", "Find the right facilitator and an available time for your session."],
     bookings: ["Bookings", "Review requests, manage schedules and export your booking records."],
     blocks: ["Blocked dates", "Keep availability accurate with leave, holidays and other commitments."],
+    csat: ["CSAT / Training", "Complete assigned training, share CSAT links and QR codes, and review responses."],
+    facilitators: ["Facilitator accounts", "Create and manage limited-access facilitator logins."],
     profile: ["My profile", "Your account details and security, in one place."],
     builder: ["Form builder", "Shape the booking experience with safe drafts and publishing."],
     activity: ["Activity log", "Follow changes across bookings, accounts and your booking form."],
@@ -162,6 +165,10 @@
     return;
   } finally { window.BookingAppearance?.reveal(); }
   if (!user) { identity = await showLogin(); user = identity.user; }
+  if (identity.role === "facilitator") {
+    st.tab = "csat";
+    document.querySelectorAll(".tab").forEach(button => { button.hidden = !["csat", "profile"].includes(button.dataset.tab); });
+  }
   $("#app").hidden = false;
   $("#userName").textContent = identity.profile?.displayName || user;
   $("#modeBadge").textContent = mode === "api" ? "Live API" : "Local storage";
@@ -223,6 +230,8 @@
     e.preventDefault(); e.target.click();
   });
   function render() {
+    if (identity?.role === "facilitator" && !["csat", "profile"].includes(st.tab)) st.tab = "csat";
+    window.CsatUI?.deactivate();
     const [pageTitle, description] = pages[st.tab];
     $("#pageTitle").textContent = pageTitle;
     $("#pageDescription").textContent = description;
@@ -231,6 +240,11 @@
       if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     const v = $("#view");
+    if (["csat", "facilitators"].includes(st.tab)) {
+      window.SettingsUI.deactivate();
+      window.CsatUI.render(st.tab, v, { S, identity, labels:FACS });
+      return;
+    }
     if (["profile", "builder", "activity", "settings"].includes(st.tab)) {
       window.SettingsUI.render(st.tab, v, { S, toast, mode, config:sourceConfig, navigate: tab => document.querySelector(`[data-tab="${tab}"]`).click(), onPublished: result => applyConfig(result.config),
         onProfile: account => { $("#userName").textContent = account.profile?.displayName || account.user; } });

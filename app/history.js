@@ -58,6 +58,12 @@
         row.append(title, node("td", Array.isArray(answer.value) ? answer.value.join("; ") : String(answer.value ?? ""))); body.append(row);
       }
       table.append(body); content.append(table); message.textContent = "Submitted answers are read-only.";
+      if (item.csatShare?.link && item.csatShare.state === "open") {
+        const section = node("section", undefined, "csat-sharing");
+        section.append(node("h3", "Share the session CSAT"));
+        const controls = node("div"); section.append(controls); content.append(section);
+        window.CsatShare.mount(controls, item.csatShare);
+      }
     } catch (err) { if (version === generation) failed(err, () => detail(id)); }
     finally { if (version === generation) { content.setAttribute("aria-busy", "false"); back.hidden = false; } }
   }

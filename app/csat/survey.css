@@ -1,0 +1,61 @@
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; background:var(--ui-bg); color:var(--ui-text); font:16px/1.5 system-ui, sans-serif; }
+[hidden] { display:none !important; }
+.survey { max-width:840px; margin:0 auto; padding:72px 24px 32px; }
+:root[data-width="wide"] .survey { max-width:1040px; }
+.survey-theme-toggle { position:absolute; top:20px; right:24px; }
+.survey-heading { text-align:center; margin-bottom:28px; }
+.survey h1 { font-size:clamp(1.6rem,4vw,2.3rem); letter-spacing:-.04em; margin:8px 0; }
+.survey h2 { font-size:clamp(1.35rem,3vw,1.85rem); line-height:1.3; margin:12px 0 28px; letter-spacing:-.025em; }
+.eyebrow { font-size:.75rem; font-weight:700; letter-spacing:.12em; color:var(--ui-primary); margin:0; }
+.muted,.helper,.session-context,.privacy-note { color:var(--ui-muted); }
+.session-context { font-size:.875rem; }
+.survey-progress { margin:0 8px 20px; }
+.progress-meta { display:flex; justify-content:space-between; font-size:.8rem; color:var(--ui-muted); margin-bottom:8px; }
+progress { appearance:none; width:100%; height:6px; border:0; border-radius:999px; background:var(--ui-raised); overflow:hidden; }
+progress::-webkit-progress-bar { background:var(--ui-raised); border-radius:999px; }
+progress::-webkit-progress-value { background:var(--ui-primary); border-radius:999px; transition:width .25s ease; }
+progress::-moz-progress-bar { background:var(--ui-primary); }
+.panel { background:var(--ui-surface); border:1px solid var(--ui-border); border-radius:24px; padding:36px; box-shadow:var(--ui-shadow); }
+.carousel-card { min-height:360px; }
+.carousel-card.forward { animation:slide-forward .22s ease-out; }
+.carousel-card.backward { animation:slide-backward .22s ease-out; }
+@keyframes slide-forward { from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:none; } }
+@keyframes slide-backward { from { opacity:0; transform:translateX(-12px); } to { opacity:1; transform:none; } }
+.required { color:var(--ui-primary); font-size:1rem; }
+fieldset { border:0; padding:0; margin:0; min-width:0; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.choice-group { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.choice-tile { display:flex; gap:12px; align-items:center; padding:16px; border:1px solid var(--ui-border); border-radius:14px; cursor:pointer; min-height:56px; overflow-wrap:anywhere; }
+.choice-tile:has(input:checked) { background:var(--ui-raised); border-color:var(--ui-primary); box-shadow:inset 0 0 0 1px var(--ui-primary); }
+input[type="radio"] { accent-color:var(--ui-primary); flex-shrink:0; }
+.rating-tiles { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+.rating-tile { position:relative; display:flex; align-items:center; flex-direction:column; justify-content:center; min-height:132px; padding:18px 6px; border:1px solid var(--ui-border); border-radius:18px; background:var(--ui-surface); cursor:pointer; transition:background .15s,border-color .15s,transform .15s; }
+.rating-tile input { position:absolute; opacity:0; width:1px; height:1px; }
+.rating-face { font-size:2.3rem; font-weight:700; line-height:1.2; color:var(--ui-primary); }
+.rating-label { font-size:.72rem; text-align:center; margin-top:12px; color:var(--ui-muted); }
+.selection-mark { position:absolute; top:5px; right:9px; opacity:0; color:var(--ui-primary); font-weight:700; }
+.rating-tile:has(input:checked) { background:var(--ui-raised); border-color:var(--ui-primary); box-shadow:inset 0 0 0 1px var(--ui-primary); }
+.rating-tile:has(input:checked) .selection-mark { opacity:1; }
+.rating-tile:hover { transform:translateY(-2px); border-color:var(--ui-primary); }
+.rating-tile:has(input:focus-visible),.choice-tile:has(input:focus-visible) { outline:3px solid var(--ui-focus); outline-offset:3px; }
+.confirmation { font-size:.85rem; color:var(--ui-primary); min-height:3em; }
+.helper { font-size:.85rem; }
+input[type="text"],input:not([type]),textarea { width:100%; border:1px solid var(--ui-border); background:var(--ui-bg); color:var(--ui-text); padding:16px; border-radius:14px; font:inherit; min-height:56px; }
+textarea { resize:vertical; min-height:150px; }
+input:focus-visible,textarea:focus-visible,.btn:focus-visible { outline:3px solid var(--ui-focus); outline-offset:3px; }
+.survey-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:32px; padding-top:20px; border-top:1px solid var(--ui-border); }
+.btn { min-height:44px; border:1px solid var(--ui-border); border-radius:12px; background:var(--ui-surface); color:var(--ui-text); font:inherit; font-weight:600; padding:10px 18px; cursor:pointer; }
+.btn.primary { background:var(--ui-primary); color:var(--ui-primary-ink); border-color:var(--ui-primary); }
+.btn:disabled { opacity:.5; cursor:default; }
+.step-marker { color:var(--ui-muted); font-size:.8rem; }
+.privacy-note { text-align:center; font-size:.75rem; margin:24px 16px; }
+.alert { color:var(--ui-danger); background:var(--ui-danger-bg); padding:12px; border-radius:12px; }
+.terminal { text-align:center; }
+.terminal-mark { display:inline-grid; place-items:center; border-radius:50%; width:64px; height:64px; background:var(--ui-success-bg); color:var(--ui-success); font-size:2rem; }
+:root[data-density="compact"] .panel { padding:24px; }
+@media(max-width:600px) { .survey { padding:72px 16px 24px; } .panel { padding:24px 18px; } .choice-group { grid-template-columns:1fr; } .rating-tiles { gap:6px; } .rating-tile { min-height:116px; border-radius:12px; } .rating-face { font-size:1.8rem; } .rating-label { font-size:.65rem; } .survey-actions { gap:8px; } .btn { padding:10px 12px; } }
+@media(prefers-reduced-motion:reduce) { .carousel-card { animation:none; } .rating-tile:hover { transform:none; } }
+:root[data-reduce-motion="true"] .carousel-card { animation:none; }
+:root[data-reduce-motion="true"] .rating-tile:hover { transform:none; }
+@media(forced-colors:active) { .rating-tile:has(input:checked),.choice-tile:has(input:checked) { outline:2px solid Highlight; } }

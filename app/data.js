@@ -197,6 +197,15 @@
       if (await isApi()) return api("POST", "/api/auth/logout", {});
       demoUser = null; return { ok:true };
     },
+    async trainingSessions() { return (await isApi()) ? api("GET", "/api/training-sessions") : unavailable(); },
+    async trainingSession(id) { return (await isApi()) ? api("GET", `/api/training-sessions/${encodeURIComponent(id)}`) : unavailable(); },
+    async trainingSharing(id, action) { return (await isApi()) ? api(action ? "POST" : "GET", `/api/training-sessions/${encodeURIComponent(id)}/sharing`, action ? { action } : undefined) : unavailable(); },
+    async decideTraining(id, action) { return (await isApi()) ? api("POST", `/api/training-sessions/${encodeURIComponent(id)}/decision`, { action }) : unavailable(); },
+    async completeTraining(id, activateLegacy = false) { return (await isApi()) ? api("POST", `/api/training-sessions/${encodeURIComponent(id)}/complete`, { activateLegacy }) : unavailable(); },
+    async addAttendee(id, input) { return (await isApi()) ? api("POST", `/api/training-sessions/${encodeURIComponent(id)}/attendees`, input) : unavailable(); },
+    async invitation(id, attendeeId, action) { return (await isApi()) ? api("POST", `/api/training-sessions/${encodeURIComponent(id)}/attendees/${encodeURIComponent(attendeeId)}/invitation`, { action }) : unavailable(); },
+    async facilitators() { return (await isApi()) ? api("GET", "/api/manage/facilitators") : unavailable(); },
+    async saveFacilitator(input, id) { return (await isApi()) ? api(id ? "PUT" : "POST", `/api/manage/facilitators${id ? "/" + encodeURIComponent(id) : ""}`, input) : unavailable(); },
     async profile() { return (await isApi()) ? api("GET", "/api/auth/profile") : unavailable(); },
     async updateProfile(profile) { writable(); return (await isApi()) ? api("PUT", "/api/auth/profile", profile) : unavailable(); },
     async changePassword(currentPassword, newPassword, confirmPassword) {

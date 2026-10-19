@@ -6,5 +6,7 @@ const canonical = path.resolve(__dirname, "../../app");
 const directory = fs.existsSync(canonical) ? canonical : path.join(__dirname, "form-assets");
 module.exports = {
   schema: require(path.join(directory, "form-schema.js")),
-  defaults: require(path.join(directory, "form-config.js"))
+  defaults: require(path.join(directory, "form-config.js")),
+  csatConfig: require(path.join(directory, "csat-config.js")),
+  csatSchema: require(path.join(directory, "csat-schema.js"))
 };

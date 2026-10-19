@@ -21,7 +21,7 @@ function detail(record) {
   return { ...summary(record), answerSnapshot:(record.answerSnapshot || []).map(answer =>
     Object.fromEntries(["id", "title", "type", "value"].filter(k => answer[k] !== undefined).map(k => [k, answer[k]]))) };
 }
-function withoutOwner(record) { const { ownerHash, ...publicRecord } = record; return publicRecord; }
+function withoutOwner(record) { const { ownerHash, csatSharing, csatAttendeeCount, csatCompletedBy, ...publicRecord } = record; return publicRecord; }
 const invalid = () => Object.assign(new Error("Invalid history pagination."), { statusCode:400, expose:true });
 function pagination(query) {
   const size = query.get("limit");

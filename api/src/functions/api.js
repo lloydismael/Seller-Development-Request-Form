@@ -6,6 +6,8 @@ const { findConflicts, conflictMessage, isActive, inBlock } = require("../rules"
 const { isAdmin, adminUser, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
 const forms = require("../forms");
 const audit = require("../audit");
+const csat = require("../csat");
+const accounts = require("../accounts");
 const { schema } = require("../form-assets-loader");
 
 const json = (status, body) => ({ status, jsonBody: body, headers: { "Cache-Control": "no-store" } });
@@ -23,7 +25,7 @@ async function body(req) {
   schema.size(value);
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
-const safeIdentity = who => who ? { id:who.id, user:who.user, provider:who.provider,
+const safeIdentity = who => who ? { id:who.id, user:who.user, provider:who.provider, role:who.role, facilitatorLabel:who.facilitatorLabel || "",
   profile:{ displayName:who.profile?.displayName || "", email:who.profile?.email || "", phone:who.profile?.phone || "" } } : null;
 
 // All browser admin writes (including login/logout) require a non-simple header.
@@ -64,14 +66,21 @@ function http(name, definition) {
     try {
       if ((name === "myRequests" || name === "myRequest" || (name === "bookings" && req.method === "POST")) && !sameOrigin(req, false))
         return json(403, { error:"Request origin is not allowed." });
+      const csatPrivate = ["trainingSessions", "trainingSession", "trainingComplete", "trainingDecision", "trainingSharing", "trainingAttendees", "trainingInvitation"].includes(name);
+      const accountPrivate = name === "facilitatorAccounts" || name === "facilitatorAccount";
+      const csatPublic = name === "csatSurvey" || name === "csatSubmit";
+      if (csatPrivate && !await getIdentity(req)) return DENIED;
+      if (accountPrivate && !await isAdmin(req)) return DENIED;
+      if (!["GET", "HEAD"].includes(req?.method) && (csatPrivate || accountPrivate || csatPublic) && !sameOrigin(req, !csatPublic)) return json(403, { error:"Request origin is not allowed." });
       const privateRoute = privateRoutes.has(name) || (name === "bookings" && req.method === "GET");
-      if (privateRoute && !await isAdmin(req)) return DENIED;
+      const selfService = name === "authProfile" || name === "authPassword";
+      if (privateRoute && !(selfService ? await getIdentity(req) : await isAdmin(req))) return DENIED;
       if (!["GET", "HEAD"].includes(req?.method) && (privateRoute || name === "authLogin" || name === "authLogout") && !sameOrigin(req))
         return json(403, { error:"Admin request origin is not allowed or X-Admin-Request: 1 is missing. Open the admin page on an approved application domain and retry." });
       return await handler(req, context);
     } catch (e) {
-      const status = [400, 401, 409, 429, 503].includes(e.statusCode) ? e.statusCode : 500;
-      const messages = { 401:"Administrator sign-in required.", 409:"Record or form changed. Refresh the latest form/draft and retry. Bookings require its formVersion and stable-ID answerValues.", 429:"Too many attempts; retry later.", 503:"Backend unavailable. Retry later.", 500:"Unable to complete the request. Retry later." };
+      const status = [400, 401, 403, 404, 409, 429, 503].includes(e.statusCode) ? e.statusCode : 500;
+      const messages = { 403:"Access denied.", 404:"Record or invitation not found.", 401:"Sign-in required.", 409:"Record or form changed. Refresh the latest form/draft and retry. Bookings require its formVersion and stable-ID answerValues.", 429:"Too many attempts; retry later.", 503:"Backend unavailable. Retry later.", 500:"Unable to complete the request. Retry later." };
       // Never log exceptions, bodies, cookies or credentials.
       if (status >= 500) context?.error?.("API operation failed: " + name);
       return json(status, { error:status === 400 ? (e.expose ? "Invalid request. " + String(e.message).slice(0, 300) : "Invalid request. Check the supplied fields and retry.") : status === 409 ? "Record changed. Reload the latest record/draft and retry." : messages[status],
@@ -88,6 +97,75 @@ async function audited(req, status, value, action, target, summary, actor) {
   }
   return json(status, value);
 }
+
+http("facilitatorAccounts", {
+  methods:["GET", "POST"], authLevel:"anonymous", route:"manage/facilitators",
+  handler:async req => {
+    const who = await getIdentity(req), input = req.method === "GET" ? null : await body(req);
+    if (req.method === "POST" && !input) return json(400, { error:"Account fields required." });
+    const value = await accounts.manageFacilitators(who, input);
+    return req.method === "GET" ? json(200, value) : audited(req, 201, value, "facilitator.create", value.id, "Facilitator account created", who.user);
+  }
+});
+http("facilitatorAccount", {
+  methods:["PUT"], authLevel:"anonymous", route:"manage/facilitators/{id}",
+  handler:async req => {
+    const who = await getIdentity(req), input = await body(req);
+    if (!input) return json(400, { error:"Account fields required." });
+    const value = await accounts.manageFacilitators(who, input, req.params.id);
+    return audited(req, 200, value, "facilitator.update", value.id, "Facilitator account updated; sessions invalidated", who.user);
+  }
+});
+http("trainingSessions", { methods:["GET"], authLevel:"anonymous", route:"training-sessions", handler:async req => json(200, await csat.list(await getIdentity(req))) });
+http("trainingSession", { methods:["GET"], authLevel:"anonymous", route:"training-sessions/{id}", handler:async req => json(200, await csat.detail(req.params.id, await getIdentity(req))) });
+http("trainingDecision", {
+  methods:["POST"], authLevel:"anonymous", route:"training-sessions/{id}/decision",
+  handler:async req => {
+    const who = await getIdentity(req), input = await body(req);
+    if (!input || Object.keys(input).some(k => k !== "action")) return json(400, { error:"Invalid booking decision." });
+    const value = await csat.decide(req.params.id, who, input.action);
+    return audited(req, 200, value, "training." + input.action, req.params.id, "Booking request " + (input.action === "accept" ? "accepted" : "declined"), who.user);
+  }
+});
+http("trainingComplete", {
+  methods:["POST"], authLevel:"anonymous", route:"training-sessions/{id}/complete",
+  handler:async req => {
+    const who = await getIdentity(req), input = await body(req);
+    if (!input || Object.keys(input).some(k => k !== "activateLegacy") || (input.activateLegacy !== undefined && typeof input.activateLegacy !== "boolean")) return json(400, { error:"Invalid completion request." });
+    const value = await csat.complete(req.params.id, who, input.activateLegacy === true);
+    return audited(req, 200, value, "training.complete", req.params.id, "Phone Videography completed; CSAT activated", who.user);
+  }
+});
+http("trainingSharing", {
+  methods:["GET", "POST"], authLevel:"anonymous", route:"training-sessions/{id}/sharing",
+  handler:async req => {
+    const who = await getIdentity(req);
+    if (req.method === "GET") return json(200, await csat.sharing(req.params.id, who));
+    const input = await body(req);
+    if (!input || Object.keys(input).some(k => k !== "action") || typeof input.action !== "string") return json(400, { error:"Invalid sharing action." });
+    const result = await csat.sharing(req.params.id, who, input.action);
+    return audited(req, 200, result, "sharing." + input.action, req.params.id, "Session sharing access updated", who.user);
+  }
+});
+http("trainingAttendees", {
+  methods:["POST"], authLevel:"anonymous", route:"training-sessions/{id}/attendees",
+  handler:async req => {
+    const who = await getIdentity(req), value = await csat.addAttendee(req.params.id, who, await body(req));
+    return audited(req, 201, value, "attendee.create", req.params.id, "Attendee registered", who.user);
+  }
+});
+http("trainingInvitation", {
+  methods:["POST"], authLevel:"anonymous", route:"training-sessions/{id}/attendees/{attendeeId}/invitation",
+  handler:async req => {
+    const who = await getIdentity(req), input = await body(req);
+    if (!input || Object.keys(input).some(k => k !== "action")) return json(400, { error:"Invalid invitation action." });
+    const value = await csat.invitation(req.params.id, req.params.attendeeId, who, input.action);
+    return audited(req, 200, value, "invitation." + input.action, req.params.id, "Attendee invitation updated", who.user);
+  }
+});
+// Invitation tokens travel in POST bodies, never URLs/server request logs.
+http("csatSurvey", { methods:["POST"], authLevel:"anonymous", route:"csat/resolve", handler:async req => { const input = await body(req); return json(200, await csat.survey(input?.token, input?.attemptId)); } });
+http("csatSubmit", { methods:["POST"], authLevel:"anonymous", route:"csat/submit", handler:async req => { const input = await body(req); return json(200, await csat.submit(input?.token, input?.answers, input?.attemptId)); } });
 
 http("health", {
   methods: ["GET"], authLevel: "anonymous", route: "health",
@@ -123,6 +201,7 @@ http("bookings", {
 
     Object.assign(rec, { id: randomUUID(), status: "Pending", adminNotes: "", createdAt: new Date().toISOString(), ownerHash:browser.ownerHash });
     schema.size(rec);
+    csat.initializeSharing(rec);
     await store.bookings.put(rec);
     const result = await audited(req, 201, { ...anonymous.withoutOwner(rec), historyAvailable:browser.recognized }, "booking.create", rec.id, "Booking submitted", "anonymous");
     return { ...result, cookies:[anonymous.cookie(req, browser.token)] };
@@ -148,7 +227,8 @@ http("myRequest", {
       return json(404, { error:"Booking not found." });
     const record = await store.bookings.get(id);
     if (!record || record.ownerHash !== browser.ownerHash) return json(404, { error:"Booking not found." });
-    return { ...json(200, anonymous.detail(record)), cookies:[anonymous.cookie(req, browser.token)] };
+    const share = await csat.ownedSharing(record);
+    return { ...json(200, { ...anonymous.detail(record), ...(share ? { csatShare:share } : {}) }), cookies:[anonymous.cookie(req, browser.token)] };
   }
 });
 
@@ -158,8 +238,9 @@ http("bookingItem", {
   handler: async (req) => {
     if (!await isAdmin(req)) return DENIED;
     const id = req.params.id;
-    const existing = await store.bookings.get(id);
-    if (!existing) return json(404, { error: "Booking not found." });
+    const current = await store.bookings.getWithVersion(id);
+    const existing = current?.value;
+    if (!existing || existing.recordType) return json(404, { error: "Booking not found." });
 
     const actor = await adminUser(req);
     if (req.method === "DELETE") { await store.bookings.remove(id); return audited(req, 200, { ok:true }, "booking.delete", id, "Booking deleted", actor); }
@@ -183,7 +264,8 @@ http("bookingItem", {
     next.updatedAt = new Date().toISOString();
     next.updatedBy = actor || "admin";
     schema.size(next);
-    await store.bookings.put(next);
+    csat.transition(existing, next, await getIdentity(req));
+    await store.bookings.compareAndSwap(id, next, current.version);
     return audited(req, 200, anonymous.withoutOwner(next), "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), actor);
   }
 });

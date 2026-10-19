@@ -51,6 +51,102 @@ answer on the selected route is valid and scheduling availability is ready. Opti
 questions may remain blank; invalid optional answers must be corrected. Clearing or
 invalidating an answer hides the button again. Draft previews never enable submission.
 
+## Phone Videography CSAT and facilitator access
+
+**Admin → Facilitator accounts** creates local username/password accounts mapped
+explicitly to a Training Facilitator label. Use a unique username and a 12–128
+character password and hand credentials over privately. Admins can change the mapping,
+disable/reactivate accounts, or reset passwords; changes invalidate existing sessions.
+One account is reserved per facilitator label. The existing bootstrap admin and optional
+SWA admin login remain supported. Facilitators use the same `/admin/` login but see
+only **CSAT / Training** and **My profile**. Assignment comes from the persisted mapping,
+not the user's editable display name. Unmapped sessions remain administrator-only.
+
+Facilitators can read their assigned sessions, **Accept request** or **Decline request**
+for assigned Pending bookings, register attendees, complete approved Phone Videography
+sessions, and see their named responses and rating averages. Acceptance changes Pending
+to Approved; decline changes it to Rejected. Both require confirmation, record the actor,
+and reject stale/non-Pending decisions. Acceptance checks scheduling conflicts; only
+admins can override conflicts. Facilitators cannot reschedule/delete bookings, change
+shared settings or forms, manage accounts/blocked dates, or read global activity.
+Authorization and assignment checks are enforced by the API.
+
+**CSAT / Training → Attendees and CSAT** now defaults to one **Session CSAT link and QR**.
+No attendee registration is needed: attendees open the link or scan the QR and answer the
+survey. Sharing metadata is created with new Phone Videography requests and initialized
+on demand for older requests. The link remains closed until an admin or assigned facilitator
+completes an Approved session. Previously Completed bookings still require explicit admin
+activation; other modules do not activate CSAT. Requesters see read-only link/QR controls
+in their owned **My Request** detail only when CSAT is open, without access to results.
+
+Staff can copy the same retrievable link, download its QR as PNG, revoke sharing or rotate
+its URL/QR. Reactivation generates a new URL. Rotation/revocation does not delete responses
+or affect legacy individual invitations. Links use a purpose-specific HMAC and persisted
+nonce, not a raw stored secret. Changing SESSION_SECRET invalidates existing shared URLs;
+reload sharing controls and redistribute the regenerated URL/QR afterward. Links are bearer
+access, not verified attendee identity. Anyone holding a shared link can submit multiple
+responses; **Submit another response** starts a blank form. Each attempt has an idempotency
+ID so network retries do not duplicate that attempt. Shared submissions are throttled at
+300 successful new responses per session per minute for service protection, not identity
+or expected participant enforcement.
+
+The QR is generated locally with MIT-licensed qrcode-generator 2.0.4; no link is sent to an
+external QR service. Refresh the checked-in browser asset with `npm run build:qr` in `api/`
+after changing that dependency. Keep its license notice with the asset. The independent
+jsqr decoder is a development-only test dependency. A localhost QR points to the scanner's
+own device: phone testing needs a reachable development hostname or deployed HTTPS origin.
+No firewall or external network exposure is configured automatically.
+
+**Legacy individual invitations** remains a collapsed optional workflow. Existing registered
+attendees and their responses are preserved (maximum 2000 legacy attendees per session).
+Each individual invitation still permits only one final response, with no reset after
+submission. Raw individual tokens are stored only as hashes and cannot be recovered;
+Reissue invalidates the old token and Revoke closes an unanswered invitation. Optional
+legacy email is metadata only; no email is sent. All tokens travel in URL fragments and
+POST bodies; reopen the original link after a page reload because fragments are removed.
+No automatic expiry is configured. Reopening/cancelling a booking or changing its topic
+away from Phone Videography blocks new responses; existing responses remain saved.
+Returning an activated session to Completed requires approval first. Deleting a booking
+makes its invitations inaccessible but retains its attendee/response records for controlled
+retention. There is no automatic CSAT purge; authorized storage operators must apply the
+organization's retention/deletion policy to the booking and related attendee records.
+
+The CSAT page uses a **one-question-per-slide carousel**, branch-aware progress and
+large numbered 1–5 rating tiles. Pointer rating selection confirms briefly and advances;
+keyboard users can select with arrow keys and confirm with Next or Enter. Back allows
+corrections, feedback has character counters, and only the final comments slide submits.
+Answers remain in memory, not browser draft storage. Published application palettes,
+card/glass settings and saved/system light/dark mode are applied, with a Dark mode switch
+and reduced-motion support. Theme-loading failures retain usable shared defaults.
+
+The in-app survey reproduces the authorized source's six divisions and director/officer
+branches, including OMF's direct skip and the duplicate OJ choice with separate IDs.
+It contains five required 1–5 satisfaction ratings and two required text answers. Name
+(maximum 200 characters), branch choice where applicable, division and all evaluation
+answers are required; evaluation text allows 2000 characters per answer. Existing
+Microsoft Forms responses are not imported and submissions are not sent to Microsoft
+Forms. Named answers are visible only to admins and the currently assigned facilitator.
+
+CSAT records are typed rows in the existing `SdrfBookings` table (same partition for
+atomic booking/invitation transactions); they are excluded from ordinary booking lists.
+Legacy responses remain on attendee rows; shared responses use independent typed response
+rows rather than booking JSON. Staff results combine both sources and display total
+submissions, without claiming a response rate against a registered roster. Account
+uniqueness uses an atomic directory/account transaction in `SdrfAccounts`. Concurrent
+completion, roster, invitation or response changes fail with a recoverable 409 instead of
+overwriting state. Refresh after a conflict; after a lost submission response the survey
+checks whether the invitation was already consumed. Audit failures report a saved-operation
+warning: do not repeat a saved operation blindly. No new Azure service is required.
+CSAT/account management requires the API and is unavailable in browser-only demo mode.
+
+API routes: `/api/manage/facilitators[/{id}]`, `/api/training-sessions[/{id}]`,
+`/api/training-sessions/{id}/complete`, `/api/training-sessions/{id}/decision`,
+`/api/training-sessions/{id}/sharing` (GET, or POST rotate/revoke/reactivate),
+`/api/training-sessions/{id}/attendees`,
+`/api/training-sessions/{id}/attendees/{attendeeId}/invitation`, and public POST
+`/api/csat/resolve` and `/api/csat/submit`. Deploy the `/csat/` static page and include
+canonical `csat-config.js` and `csat-schema.js` in the independent API asset build.
+
 ## Anonymous request history
 
 **My Request** at the top left of the public header opens this browser's previous

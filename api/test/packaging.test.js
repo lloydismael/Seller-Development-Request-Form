@@ -5,7 +5,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 const root = path.resolve(__dirname, "../..");
-const files = ["form-config.js", "form-schema.js"];
+const files = ["form-config.js", "form-schema.js", "csat-config.js", "csat-schema.js"];
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "booking-package-"));
   t.after(() => fs.rmSync(dir, { recursive:true, force:true }));

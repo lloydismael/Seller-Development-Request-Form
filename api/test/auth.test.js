@@ -126,7 +126,7 @@ test("profile ownership and password change revoke sessions without leaking cred
   assert.equal(profile.id, "local-admin");
   assert.equal(profile.user, settings.ADMIN_USERNAME);
   assert.equal(profile.profile.displayName, "Test Name");
-  assert.deepEqual(Object.keys(profile).sort(), ["credentialVersion", "id", "profile", "provider", "user"]);
+  assert.deepEqual(Object.keys(profile).sort(), ["credentialVersion", "disabled", "facilitatorLabel", "id", "profile", "provider", "role", "user"]);
   const password = "  test-new-password  ";
   for (const input of [
     { currentPassword:settings.ADMIN_PASSWORD, newPassword:"short", confirmPassword:"short" },

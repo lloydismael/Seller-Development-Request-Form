@@ -51,6 +51,52 @@ answer on the selected route is valid and scheduling availability is ready. Opti
 questions may remain blank; invalid optional answers must be corrected. Clearing or
 invalidating an answer hides the button again. Draft previews never enable submission.
 
+## Booking reservations and pending requests
+
+Pending requests do not reserve a facilitator's time or appear as booked in public availability.
+Multiple pending requests may share the same facilitator, date and overlapping time. Only
+Approved and Completed bookings reserve time; Rejected and Cancelled bookings do not.
+Blocked dates remain unavailable. New requests are still rejected when they overlap a confirmed
+reservation. Pending requests remain visible in administrator queues and calendars.
+
+Administrators also see informational conflicts between Pending, Approved and Completed
+bookings sharing a date/facilitator and overlapping time. The dashboard counts unique affected
+bookings and groups connected overlaps, while the bookings table provides text badges and a
+Conflicts only filter. Booking details link to competing requests and refresh warnings as schedule
+fields change. Approval warns about competing pending requests without treating them as reservations.
+Rejected/Cancelled requests are excluded; blocked-date warnings remain. Informational warnings
+never change public availability or server-enforced reservation checks.
+
+Approval rechecks confirmed reservations. Administrator edits and training acceptance share a
+versioned scheduling guard committed atomically with the booking in the existing bookings
+partition, preventing simultaneous approvals of overlapping pending requests across API instances.
+A scheduling conflict leaves the losing request pending. Explicit administrator conflict overrides
+remain supported. Existing records need no status migration; the separately deployed API must be
+updated for live availability and conflict rules to change. Browser demo scheduling uses the same
+reservation statuses.
+
+## Facilitator account management
+
+The administrator's Facilitator accounts workspace provides account totals, active/disabled
+filters, username/facilitator search, and CSV export of the filtered directory. Exports contain
+only usernames, assignments, status and recorded creation/update timestamps, never credentials;
+spreadsheet formula prefixes are neutralized. Disabled accounts retain their facilitator assignment.
+
+Create accounts or manage assignments in a keyboard-accessible details drawer. Password resets
+and enable/disable actions have separate confirmation flows. Initial/reset passwords must have
+12–128 characters; the generator uses browser cryptographic randomness to produce 20 characters.
+Reveal/copy controls are explicit, passwords are not saved to browser storage, and password fields
+are cleared when the drawer closes. Hand credentials over through an approved private channel;
+clear the clipboard afterward. Unsaved changes prompt before leaving; saves block duplicate actions.
+Every existing account update invalidates sessions, and disabling prevents sign-in without deleting
+account or training history. Administrator authorization and unique assignments remain API-enforced.
+
+Account details show paginated recorded activity filtered by account ID. Older records may show
+“Not recorded” timestamps or generic update summaries. This is operational history, not a complete
+compliance ledger; failed activity recording is surfaced without suggesting a mutation retry.
+Backend updates are required for timestamps, account-target filtering and detailed update summaries.
+Do not perform account mutation tests against the localhost shared-production endpoint.
+
 ## Opt-in localhost with production tables
 
 `api/scripts/start-shared-production.ps1 -AcknowledgeLiveWrites -CsatKeyFile <encrypted-key.xml>`

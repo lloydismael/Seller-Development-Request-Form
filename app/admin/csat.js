@@ -17,20 +17,7 @@
     view.innerHTML = '<p role="status">Loading…</p>';
     try {
       if (tab === "facilitators") {
-        const accounts = await S.facilitators();
-        if (!live()) return;
-        const options = selected => [...new Set([...labels, selected].filter(Boolean))].map(label => `<option ${label === selected ? "selected" : ""}>${esc(label)}</option>`).join("");
-        view.innerHTML = `<section class="panel"><h2>Facilitator accounts</h2><p>Assign a login to a training facilitator. Credentials are handed over manually; password resets and account changes invalidate existing sessions.</p>
-          <form id="newFacilitator" class="form-grid"><label>Username<input name="username" required minlength="3" maxlength="100" autocomplete="off"></label><label>Initial password<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label><label>Assigned facilitator<select name="facilitatorLabel">${options("")}</select></label><button class="btn primary">Create account</button></form></section>
-          ${accounts.map(a => `<section class="panel"><h3>${esc(a.user)}</h3><form data-account="${esc(a.id)}" class="form-grid"><label>Assigned facilitator<select name="facilitatorLabel">${options(a.facilitatorLabel)}</select></label><label>Reset password (leave blank to keep)<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password"></label><label><input type="checkbox" name="disabled" ${a.disabled ? "checked" : ""}> Disabled</label><button class="btn">Save account</button></form></section>`).join("")}`;
-        view.querySelectorAll("form").forEach(form => { form.onsubmit = async e => {
-          e.preventDefault(); const button = form.querySelector("button"); button.disabled = true;
-          const data = new FormData(form), input = { facilitatorLabel:data.get("facilitatorLabel") };
-          if (form.dataset.account) { input.disabled = data.has("disabled"); if (data.get("password")) input.password = data.get("password"); }
-          else { input.username = data.get("username"); input.password = data.get("password"); }
-          try { const value = await S.saveFacilitator(input, form.dataset.account); form.reset(); await render(tab, view, ctx); warn(value); }
-          catch (err) { error(err); } finally { button.disabled = false; }
-        }; });
+        await window.FacilitatorUI.render(view, ctx);
         return;
       }
       const sessions = await S.trainingSessions();
@@ -86,5 +73,5 @@
       }
     } catch (e) { error(e); }
   }
-  window.CsatUI = { render, deactivate() { generation++; } };
+  window.CsatUI = { render, deactivate() { generation++; window.FacilitatorUI?.deactivate(); } };
 })();

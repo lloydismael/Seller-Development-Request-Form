@@ -136,7 +136,8 @@ test("migration rejects duplicates, invalid dates, oversized and conflicting rec
   assert.throws(()=>validateSnapshot({bookings:[booking,booking],blocks:[]}),/duplicate/);
   assert.throws(()=>validateSnapshot({bookings:[{...booking,trainingDate:"2026-02-30"}],blocks:[]}),/invalid/);
   assert.throws(()=>validateSnapshot({bookings:[{...booking,notes:"x".repeat(40000)}],blocks:[]}),/size/);
-  await assert.rejects(migrate({bookings:[booking,{...booking,id:"test-2"}],blocks:[]},memoryStore()),/conflicts/);
+  await migrate({bookings:[booking,{...booking,id:"test-2"}],blocks:[]},memoryStore());
+  await assert.rejects(migrate({bookings:[{...booking,status:"Approved"},{...booking,id:"test-2",status:"Approved"}],blocks:[]},memoryStore()),/conflicts/);
 });
 const frontend = fs.readFileSync(require.resolve("../../app/data.js"),"utf8");
 test("partial migration can resume without overwriting preserved records",async () => {
@@ -181,8 +182,12 @@ test("local UI mode is explicit; deployed file backend is rejected",async () => 
   assert.equal(saved.answerSnapshot[0].id,"name"); assert.equal(local.local.size,2);
   assert.equal(saved.historyOwner,local.local.get("sdrf_history_owner_v1"));
   assert.deepEqual(JSON.parse(local.local.get("sdrf_bookings_v2")), [JSON.parse(JSON.stringify(saved))]);
+  await local.store.create(input);
+  assert.equal(JSON.parse(local.local.get("sdrf_bookings_v2")).length,2);
+  assert.equal((await local.store.availability("2026-12-01")).busy.length,0);
+  await local.store.update(saved.id,{status:"Approved"});
+  assert.equal((await local.store.availability("2026-12-01")).busy.length,1);
   await assert.rejects(local.store.create(input), e => e.code === "SLOT_CONFLICT");
-  assert.equal(JSON.parse(local.local.get("sdrf_bookings_v2")).length,1);
   const cloud = browser("example.com","",async()=>({ok:true,headers:{get:()=>"application/json"},json:async()=>({ok:true,storage:"file"})}));
   await assert.rejects(cloud.store.mode(),/unavailable/);
 });

@@ -20,6 +20,7 @@
   function slotRange(s) { const p = String(s || "").split(/\s*-\s*/); return [toMin(p[0]), toMin(p[1])]; }
   function overlaps(a, b) { const [a1, a2] = slotRange(a), [b1, b2] = slotRange(b); return a1 < b2 && b1 < a2; }
   const isActive = s => !["Rejected", "Cancelled"].includes(s);
+  const reservesSlot = s => ["Approved", "Completed"].includes(s);
   const inBlock = (x, date) => date >= x.startDate && date <= (x.endDate || x.startDate);
 
   function findConflicts(bookings, blocks, b, ignoreId) {
@@ -27,7 +28,7 @@
     if (!b.trainingDate || !b.facilitator || (b.status && !isActive(b.status))) return out;
     blocks.filter(x => x.facilitator === b.facilitator && inBlock(x, b.trainingDate))
       .forEach(x => out.push({ type: "block", item: x }));
-    bookings.filter(x => x.id !== ignoreId && isActive(x.status) && x.facilitator === b.facilitator &&
+    bookings.filter(x => x.id !== ignoreId && reservesSlot(x.status) && x.facilitator === b.facilitator &&
       x.trainingDate === b.trainingDate && b.time && x.time && overlaps(x.time, b.time))
       .forEach(x => out.push({ type: "booking", item: x }));
     return out;
@@ -40,7 +41,7 @@
   function availabilityFor(bookings, blocks, date) {
     return {
       date,
-      busy: bookings.filter(b => isActive(b.status) && b.trainingDate === date).map(b => ({ facilitator: b.facilitator, time: b.time })),
+      busy: bookings.filter(b => reservesSlot(b.status) && b.trainingDate === date).map(b => ({ facilitator: b.facilitator, time: b.time })),
       blocked: [...new Set(blocks.filter(x => inBlock(x, date)).map(x => x.facilitator))]
     };
   }
@@ -133,7 +134,7 @@
   }
 
   window.BookingStore = {
-    slotRange, overlaps, isActive, findConflicts, conflictMessage, availabilityFor, mode, compatibility,
+    slotRange, overlaps, isActive, reservesSlot, findConflicts, conflictMessage, availabilityFor, mode, compatibility,
 
     async create(b) {
       writable();

@@ -70,6 +70,37 @@ textarea { width:100%; min-height:70px; resize:vertical; }
 .spacer { flex:1; }
 
 /* panels & stats */
+.account-intro { flex:1; min-width:200px; }
+.account-intro h2 { margin:0; }
+.account-intro p { margin:6px 0 0; }
+.account-filters { display:flex; flex-wrap:wrap; gap:16px; }
+.account-filters label { display:grid; gap:6px; flex:1; min-width:180px; }
+.account-filters input, .account-filters select { width:100%; }
+.account-table-scroll { overflow:auto; }
+.account-table { min-width:760px; }
+.account-table tbody tr { cursor:default; }
+.account-table td { overflow-wrap:anywhere; }
+.account-row-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.account-status.active { background:var(--ui-success-bg); color:var(--ui-success); }
+.account-status.disabled { background:var(--ui-warning-bg); color:var(--ui-warning); }
+.account-notice { padding:12px; border-radius:8px; background:var(--ui-info-bg); color:var(--ui-info); }
+.account-help { margin-top:20px; }
+.account-help summary { cursor:pointer; min-height:44px; display:flex; align-items:center; font-weight:600; }
+.account-drawer { position:fixed; inset:0 0 0 auto; margin:0; width:min(560px,100%); height:100dvh; max-width:100%; max-height:100dvh; padding:24px; border:1px solid var(--line); background:var(--ui-surface); color:var(--ui-text); overflow:auto; box-shadow:var(--ui-shadow); }
+.account-drawer::backdrop { background:rgba(0,0,0,.55); }
+.account-drawer-heading { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; margin-bottom:20px; }
+.account-drawer-heading h2 { margin:0; }
+.account-drawer-heading p { overflow-wrap:anywhere; }
+.account-form { display:grid; gap:16px; }
+.account-form label { display:grid; gap:6px; min-width:0; }
+.account-form input, .account-form select { width:100%; min-height:44px; font:inherit; padding:9px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface); color:var(--ui-text); }
+.account-form small { color:var(--muted); }
+.account-form-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; }
+.account-metadata { display:grid; grid-template-columns:100px minmax(0,1fr); gap:8px; }
+.account-metadata dd { margin:0; overflow-wrap:anywhere; }
+.account-activity { border-top:1px solid var(--line); padding-top:16px; margin-top:24px; }
+.account-timeline { padding-left:20px; display:grid; gap:16px; overflow-wrap:anywhere; }
+@media (max-width:600px) { .account-drawer { padding:16px; } .account-stats { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .account-filters label { min-width:100%; } }
 .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px; }
 .stat { background:var(--ui-surface); border:1px solid var(--line); border-radius:12px; padding:20px; border-left:4px solid var(--primary); box-shadow:var(--ui-shadow); }
 .stat .n { font-size:28px; font-weight:700; } .stat .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
@@ -89,6 +120,15 @@ textarea { width:100%; min-height:70px; resize:vertical; }
 .pill.Pending { background:var(--pend); color:var(--pend-t); } .pill.Approved { background:var(--free); color:var(--free-t); }
 .pill.Completed { background:var(--ui-info-bg); color:var(--ui-info); } .pill.Rejected, .pill.Cancelled { background:var(--ui-raised); color:var(--ui-muted); }
 .warnicon { color:var(--ui-danger); font-weight:700; }
+.conflict-badge { display:inline-block; border:1px solid currentColor; border-radius:8px; padding:3px 7px; font-size:11px; font-weight:600; white-space:normal; }
+.conflict-badge.competing { background:var(--ui-warning-bg); color:var(--ui-warning); }
+.conflict-badge.reserved, .conflict-badge.confirmed, .conflict-badge.block { background:var(--ui-danger-bg); color:var(--ui-danger); }
+.conflict-badges { display:grid; gap:4px; margin-top:6px; }
+.conflict-group { padding:12px 0; border-top:1px solid var(--line); }
+.conflict-group h4 { margin:0 0 10px; }
+.conflict-item { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.conflict-item > .row { flex:1; min-width:0; }
+.conflict-details { display:grid; gap:10px; padding-left:20px; overflow-wrap:anywhere; }
 
 /* bars */
 .bar { display:grid; grid-template-columns:minmax(120px,240px) 1fr 30px; gap:10px; align-items:center; margin:6px 0; font-size:13px; }

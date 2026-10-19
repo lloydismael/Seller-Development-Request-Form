@@ -33,9 +33,13 @@ test("bookings reject old clients, derive typed records and retain immutable ans
   assert.equal(created.status, 201); assert.equal(created.jsonBody.requestor, "Requestor"); assert.equal(created.jsonBody.status, "Pending");
   assert.equal(created.jsonBody.answerValues.participants, 25); assert.equal(created.jsonBody.answers.injected, undefined);
   const duplicate = await a.handlers.get("bookings")(a.request("POST", b));
-  assert.equal(duplicate.status, 409); assert.equal(duplicate.jsonBody.code, "SLOT_CONFLICT");
+  assert.equal(duplicate.status, 201); assert.equal(duplicate.jsonBody.status, "Pending");
   const update = a.request("PUT", { status:"Approved", adminNotes:"Private notes" }, token); update.params.id = created.jsonBody.id;
   assert.equal((await a.handlers.get("bookingItem")(update)).status, 200);
+  const reserved = await a.handlers.get("bookings")(a.request("POST", b));
+  assert.equal(reserved.status, 409); assert.equal(reserved.jsonBody.code, "SLOT_CONFLICT");
+  const competing = a.request("PUT", { status:"Approved" }, token); competing.params.id = duplicate.jsonBody.id;
+  assert.equal((await a.handlers.get("bookingItem")(competing)).jsonBody.code, "SLOT_CONFLICT");
   const draft = await a.forms.draft(); draft.config.questions.name.title = "Renamed requestor";
   const saved = await a.forms.saveDraft({ config:draft.config, revision:draft.revision }); await a.forms.publish({ revision:saved.revision });
   const stored = await a.store.bookings.get(created.jsonBody.id); assert.equal(stored.answerSnapshot[0].title, defaults.questions.name.title);

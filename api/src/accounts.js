@@ -170,10 +170,18 @@ async function changePassword(who, input) {
   return identity(value); // No hash, salt, password or attempt state crosses this boundary.
 }
 
+function accountTimestamp(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value ? value : null;
+}
+function facilitatorAccount(account) {
+  const { credentialVersion, ...publicIdentity } = identity(account);
+  return { ...publicIdentity, createdAt:accountTimestamp(account.createdAt), updatedAt:accountTimestamp(account.updatedAt) };
+}
 async function manageFacilitators(who, input, id) {
   const actor = await owned(who);
   if (actor.value.role !== "admin") throw fail("Administrator required.", 403);
-  if (!input) return (await store.accounts.list()).filter(a => a.role === "facilitator").map(a => ({ ...identity(a), credentialVersion:undefined }));
+  if (!input) return (await store.accounts.list()).filter(a => a.role === "facilitator").map(facilitatorAccount);
   if (typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "facilitatorLabel", "disabled"].includes(k))) throw validation("Invalid account fields.");
   const registry = await store.accounts.getWithVersion("facilitator-directory");
   const directory = registry?.value || { id:"facilitator-directory", users:{}, labels:{} };
@@ -197,7 +205,7 @@ async function manageFacilitators(who, input, id) {
   if (current?.value.facilitatorLabel !== label) delete next.labels[current?.value.facilitatorLabel];
   next.labels[label] = accountId;
   await store.accounts.transact([{ value:next, version:registry?.version ?? null }, { value, version:current?.version ?? null }]);
-  return { ...identity(value), credentialVersion:undefined };
+  return facilitatorAccount(value);
 }
 async function assigned(who, booking) {
   if (who?.role === "admin") return true;

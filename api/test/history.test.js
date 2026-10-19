@@ -18,6 +18,12 @@ function tableStore() {
       if (rows.get(entity.rowKey)?.etag !== options.etag) throw { statusCode:412 };
       await this.upsertEntity(entity);
     }
+    async submitTransaction(operations) {
+      for (const [action, entity, , options] of operations) {
+        if (action === "create" ? rows.has(entity.rowKey) : rows.get(entity.rowKey)?.etag !== options.etag) throw { statusCode:412 };
+      }
+      for (const [, entity] of operations) await this.upsertEntity(entity);
+    }
     async getEntity(pk, id) { if (!rows.has(id)) throw { statusCode:404 }; return rows.get(id); }
     async deleteEntity(pk, id) { rows.delete(id); }
     listEntities({ queryOptions }) {
@@ -109,6 +115,8 @@ test("cookie is persisted only on successful create, including saved audit failu
   const created = await a.submit(); assert.equal(created.status, 201); assert.equal(created.jsonBody.historyAvailable, false); assert.ok(created.cookies);
   const blocked = await a.list(); assert.equal(blocked.jsonBody.recognized, false); assert.equal(blocked.jsonBody.items.length, 0);
   assert.equal((await a.list(cookieHeader(created))).jsonBody.items[0].id, created.jsonBody.id);
+  const reserved = await a.store.bookings.get(created.jsonBody.id);
+  await a.store.bookings.put({ ...reserved, status:"Approved" });
   const conflict = await a.submit(); assert.equal(conflict.status, 409); assert.equal(conflict.cookies, undefined);
   await a.store.bookings.remove(created.jsonBody.id);
   a.store.bookings.put = async () => { throw new Error("private credential"); };

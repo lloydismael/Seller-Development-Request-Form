@@ -2,7 +2,8 @@ const { app } = require("@azure/functions");
 const { randomUUID } = require("crypto");
 const store = require("../store");
 const anonymous = require("../anonymous");
-const { findConflicts, conflictMessage, isActive, inBlock } = require("../rules");
+const { findConflicts, conflictMessage, reservesSlot, inBlock } = require("../rules");
+const scheduling = require("../scheduling");
 const { isAdmin, adminUser, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
 const forms = require("../forms");
 const audit = require("../audit");
@@ -83,6 +84,7 @@ function http(name, definition) {
       const messages = { 403:"Access denied.", 404:"Record or invitation not found.", 401:"Sign-in required.", 409:"Record or form changed. Refresh the latest form/draft and retry. Bookings require its formVersion and stable-ID answerValues.", 429:"Too many attempts; retry later.", 503:"Backend unavailable. Retry later.", 500:"Unable to complete the request. Retry later." };
       // Never log exceptions, bodies, cookies or credentials.
       if (status >= 500) context?.error?.("API operation failed: " + name);
+      if (status === 409 && e.code === "SLOT_CONFLICT") return json(409, { code:"SLOT_CONFLICT", error:e.publicMessage });
       return json(status, { error:status === 400 ? (e.expose ? "Invalid request. " + String(e.message).slice(0, 300) : "Invalid request. Check the supplied fields and retry.") : status === 409 ? "Record changed. Reload the latest record/draft and retry." : messages[status],
         ...(status === 409 ? { code:"RECORD_CONFLICT" } : {}) });
     }
@@ -113,7 +115,12 @@ http("facilitatorAccount", {
     const who = await getIdentity(req), input = await body(req);
     if (!input) return json(400, { error:"Account fields required." });
     const value = await accounts.manageFacilitators(who, input, req.params.id);
-    return audited(req, 200, value, "facilitator.update", value.id, "Facilitator account updated; sessions invalidated", who.user);
+    const changes = [];
+    if (Object.hasOwn(input, "password")) changes.push("password reset");
+    if (Object.hasOwn(input, "disabled")) changes.push(input.disabled ? "account disabled" : "account enabled");
+    if (Object.hasOwn(input, "facilitatorLabel")) changes.push("assignment updated");
+    const summary = "Facilitator account updated" + (changes.length ? "; " + changes.join("; ") : "") + "; sessions invalidated";
+    return audited(req, 200, value, "facilitator.update", value.id, summary, who.user);
   }
 });
 http("trainingSessions", { methods:["GET"], authLevel:"anonymous", route:"training-sessions", handler:async req => json(200, await csat.list(await getIdentity(req))) });
@@ -256,16 +263,11 @@ http("bookingItem", {
     if (!schema.validDate(next.trainingDate)) return json(400, { error: "trainingDate must be a valid YYYY-MM-DD calendar date." });
     if (!schema.validTime(next.time)) return json(400, { error:"Invalid training time range." });
 
-    if (!p.force && isActive(next.status)) {
-      const [all, blocks] = await Promise.all([store.bookings.list(), store.blocks.list()]);
-      const c = findConflicts(all, blocks, next, id);
-      if (c.length) return json(409, { code:"SLOT_CONFLICT", error: conflictMessage(c) });
-    }
     next.updatedAt = new Date().toISOString();
     next.updatedBy = actor || "admin";
     schema.size(next);
     csat.transition(existing, next, await getIdentity(req));
-    await store.bookings.compareAndSwap(id, next, current.version);
+    await scheduling.save(next, current.version, p.force === true);
     return audited(req, 200, anonymous.withoutOwner(next), "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), actor);
   }
 });
@@ -279,7 +281,7 @@ http("availability", {
     const [all, blocks] = await Promise.all([store.bookings.list(), store.blocks.list()]);
     return json(200, {
       date,
-      busy: all.filter(b => isActive(b.status) && b.trainingDate === date).map(b => ({ facilitator: b.facilitator, time: b.time })),
+      busy: all.filter(b => reservesSlot(b.status) && b.trainingDate === date).map(b => ({ facilitator: b.facilitator, time: b.time })),
       blocked: [...new Set(blocks.filter(x => inBlock(x, date)).map(x => x.facilitator))]
     });
   }

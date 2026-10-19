@@ -107,12 +107,7 @@ async function decide(id, who, action) {
   if (row.value.status !== "Pending") throw fail(409, "Only Pending requests can be accepted or declined.");
   const next = { ...row.value, status:action === "accept" ? "Approved" : "Rejected", updatedAt:new Date().toISOString(), updatedBy:who.user,
     decidedAt:new Date().toISOString(), decidedBy:who.id };
-  if (action === "accept") {
-    const { findConflicts } = require("./rules");
-    const conflicts = findConflicts(await store.bookings.list(), await store.blocks.list(), next, id);
-    if (conflicts.length) throw fail(409, "Scheduling conflict. Ask an administrator to review this request.");
-  }
-  await store.bookings.compareAndSwap(id, next, row.version);
+  await require("./scheduling").save(next, row.version);
   return safeSession(next);
 }
 async function complete(id, who, activateLegacy = false) {

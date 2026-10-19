@@ -44,11 +44,14 @@
   const st = {
     tab: "dashboard", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     calFac: "", calStatus: "active", week: startOfWeek(new Date()),
-    q: "", fStatus: "", fCat: "", fFac: "", fWhen: "upcoming", prefillDate: ""
+    q: "", fStatus: "", fCat: "", fFac: "", fConflict: "", fWhen: "upcoming", prefillDate: ""
   };
 
   const blocksOn = (date, fac) => blocks.filter(x => (!fac || x.facilitator === fac) && date >= x.startDate && date <= (x.endDate || x.startDate));
-  const hasConflict = b => active(b) && S.findConflicts(bookings, blocks, b, b.id).length > 0;
+  const conflictsFor = (b, id = b.id) => window.AdminConflicts.find(bookings, blocks, b, id);
+  const hasConflict = b => conflictsFor(b).length > 0;
+  const conflictBadges = b => [...new Set(conflictsFor(b).map(c => c.type))].map(type => `<span class="conflict-badge ${type}">⚠ ${esc(window.AdminConflicts.label(type))}</span>`).join(" ");
+  const conflictDetails = (b, id = b.id) => conflictsFor(b, id).map(c => `<li><strong>${esc(window.AdminConflicts.label(c.type))}</strong>: ${c.type === "block" ? esc(c.item.reason || "Blocked date") : `${esc(c.item.time)} · ${esc(c.item.requestor || title(c.item))} · ${esc(c.item.status)} <button type="button" class="btn sm" data-conflict-open="${esc(c.item.id)}">View booking</button>`}</li>`).join("");
   function slotState(fac, date, range) {
     const bl = blocksOn(date, fac);
     if (bl.length) return { s: "blocked", items: [], label: "Blocked", tip: bl.map(x => x.reason || "Unavailable").join(", ") };
@@ -103,6 +106,10 @@
     render();
   }
   async function saveBooking(id, patch) {
+    const booking = bookings.find(b => b.id === id);
+    const next = { ...booking, ...patch };
+    const competing = conflictsFor(next, id).filter(c => c.type !== "block" && c.item.status === "Pending");
+    if (patch.status === "Approved" && booking?.status !== "Approved" && competing.length && !confirm(`Approve this request while ${competing.length} overlapping pending request(s) exist?\n\n${competing.map(c => `${c.item.requestor || title(c.item)} · ${c.item.time}`).join("\n")}\n\nThose requests remain pending and cannot be approved into this reserved slot without an explicit override.`)) return false;
     let result;
     try { result = await S.update(id, patch); }
     catch (e) {
@@ -174,7 +181,7 @@
   $("#modeBadge").textContent = mode === "api" ? "Live API" : "Local storage";
   $("#modeBadge").classList.toggle("local", mode !== "api");
   $("#logoutBtn").onclick = async () => {
-    if (!window.SettingsUI.canLeave()) return;
+    if (!window.SettingsUI.canLeave() || window.FacilitatorUI?.canLeave() === false) return;
     const btn = $("#logoutBtn"); btn.disabled = true;
     try { await S.logout(); location.reload(); }
     catch { toast("Logout failed. Your session may still be active. Please retry."); }
@@ -187,13 +194,14 @@
   }
   document.querySelectorAll(".tab").forEach(b => (b.onclick = () => {
     if (b.dataset.tab === st.tab) { closeNavigation(true); return; }
-    if (!window.SettingsUI.canLeave()) return;
+    if (!window.SettingsUI.canLeave() || window.FacilitatorUI?.canLeave() === false) return;
     st.tab = b.dataset.tab; render(); closeNavigation();
     $("#view").focus();
   }));
   $(".user a").onclick = e => {
-    if (!window.SettingsUI.canLeave()) { e.preventDefault(); return; }
+    if (!window.SettingsUI.canLeave() || window.FacilitatorUI?.canLeave() === false) { e.preventDefault(); return; }
     window.SettingsUI.deactivate();
+    window.FacilitatorUI?.deactivate();
   };
 
   $("#view").addEventListener("click", async e => {
@@ -263,7 +271,7 @@
       <div class="dbadge"><small>${d ? d.toLocaleDateString("en-PH", { month: "short" }) : ""}</small><b>${d ? d.getDate() : "?"}</b></div>
       <div class="main"><div class="t">${hasConflict(b) ? '<span class="warnicon" title="Conflict">⚠ </span>' : ""}${esc(title(b))}</div>
         <div class="s">${esc(b.time)} · <span class="dot" style="background:${color(b.facilitator)}"></span> ${esc(b.facilitator)} · ${esc(b.requestor)} (${esc(b.division)})</div></div>
-      <span class="pill ${esc(b.status)}">${esc(b.status)}</span>
+      <span class="pill ${esc(b.status)}">${esc(b.status)}</span>${conflictBadges(b)}
       ${quick && b.status === "Pending" ? `<button class="btn sm ok" data-act="Approved" data-id="${esc(b.id)}">Approve</button><button class="btn sm danger" data-act="Rejected" data-id="${esc(b.id)}">Reject</button>` : ""}
     </div>`;
   }
@@ -286,17 +294,21 @@
     const next14 = upcoming.filter(b => b.trainingDate <= in14);
     const thisMonth = act.filter(b => (b.trainingDate || "").startsWith(today.slice(0, 7)));
     const conflicts = bookings.filter(hasConflict);
+    const competingCount = conflicts.filter(b => conflictsFor(b).some(c => c.type === "competing")).length;
+    const confirmedCount = conflicts.filter(b => conflictsFor(b).some(c => ["reserved", "confirmed"].includes(c.type))).length;
+    const groups = window.AdminConflicts.groups(bookings, blocks).sort((a, b) => a.date.localeCompare(b.date));
     v.innerHTML = `
       <div class="stats">${stat("Total requests", bookings.length)}${stat("Pending approval", pending.length, "warn")}
         ${stat("Upcoming sessions", upcoming.length)}${stat("Sessions this month", thisMonth.length)}
         ${stat("Conflicts", conflicts.length, conflicts.length ? "bad" : "")}</div>
+      <p class="muted">${competingCount} bookings in competing pending requests · ${confirmedCount} bookings overlapping confirmed reservations. Counts show unique affected bookings; categories may overlap.</p>
       <div class="grid2">
         <div class="panel"><h3>Pending approval</h3>${pending.length ? pending.slice(0, 10).map(b => rowHtml(b, true)).join("") : empty("No pending requests.")}</div>
         <div class="panel"><h3>Next 14 days</h3>${next14.length ? next14.map(b => rowHtml(b)).join("") : empty("Nothing scheduled in the next 14 days.")}</div>
         <div class="panel"><h3>Upcoming sessions by facilitator</h3>${bars(FACS.map(f => [f, upcoming.filter(b => b.facilitator === f).length]), color)}</div>
         <div class="panel"><h3>Requests by training category</h3>${bars(CATS.map(c => [c, bookings.filter(b => b.category === c).length]))}</div>
       </div>
-      ${conflicts.length ? `<div class="panel"><h3>⚠ Conflicts to resolve</h3>${conflicts.sort(byDate).map(b => rowHtml(b)).join("")}</div>` : ""}`;
+      ${conflicts.length ? `<section class="panel"><h3>⚠ Conflicts to resolve</h3><p class="muted">Pending overlaps need review but do not reserve slots. Confirmed overlaps prevent normal approval.</p>${groups.map(group => `<section class="conflict-group"><h4>${esc(group.facilitator)} · ${fmtDate(group.date)}</h4>${group.items.sort(byDate).map(b => `<div class="conflict-item">${rowHtml(b)}<button type="button" class="btn sm" data-open="${esc(b.id)}" aria-label="View booking for ${esc(b.requestor || title(b))}">View booking</button></div>`).join("")}</section>`).join("")}</section>` : ""}`;
   }
 
   // ---------- Calendar ----------
@@ -412,6 +424,7 @@
     const q = st.q.toLowerCase();
     return bookings.filter(b =>
       (!st.fStatus || b.status === st.fStatus) && (!st.fCat || b.category === st.fCat) && (!st.fFac || b.facilitator === st.fFac) &&
+      (!st.fConflict || hasConflict(b)) &&
       (st.fWhen === "all" || (st.fWhen === "upcoming" ? b.trainingDate >= today : b.trainingDate < today)) &&
       (!q || [b.requestor, b.division, b.director, b.category, b.topic, b.facilitator, b.venue, b.time, b.trainingDate, b.status]
         .some(x => String(x || "").toLowerCase().includes(q)))
@@ -425,12 +438,13 @@
         <select id="bStatus" aria-label="Filter by status">${opts(STATUSES, st.fStatus, "All statuses")}</select>
         <select id="bCat" aria-label="Filter by category">${opts(CATS, st.fCat, "All categories")}</select>
         <select id="bFac" aria-label="Filter by facilitator">${opts(FACS, st.fFac, "All facilitators")}</select>
+        <select id="bConflict" aria-label="Filter by conflict"><option value="">All bookings</option><option value="conflicts" ${st.fConflict ? "selected" : ""}>Conflicts only</option></select>
         <span class="spacer"></span><button class="btn" id="bExport">Export CSV</button>
       </div>
       <div class="panel table-panel"><div id="bTable"></div></div>`;
     $("#bWhen").value = st.fWhen;
     const bind = (id, key) => ($(id).oninput = e => { st[key] = e.target.value; table(); });
-    bind("#bq", "q"); bind("#bWhen", "fWhen"); bind("#bStatus", "fStatus"); bind("#bCat", "fCat"); bind("#bFac", "fFac");
+    bind("#bq", "q"); bind("#bWhen", "fWhen"); bind("#bStatus", "fStatus"); bind("#bCat", "fCat"); bind("#bFac", "fFac"); bind("#bConflict", "fConflict");
     $("#bExport").onclick = () => exportCsv(filtered());
     table();
   }
@@ -443,7 +457,7 @@
         <td><span class="dot" style="background:${color(b.facilitator)}"></span>${esc(b.facilitator)}</td>
         <td><b>${esc(b.category)}</b><br><span class="muted">${esc(b.topic)}</span></td>
         <td>${esc(b.requestor)}<br><span class="muted">${esc(b.division)}${b.director ? " · " + esc(b.director) : ""}</span></td>
-        <td>${esc(b.venue)}</td><td>${esc(b.participants)}</td><td><span class="pill ${esc(b.status)}">${esc(b.status)}</span></td></tr>`).join("")
+        <td>${esc(b.venue)}</td><td>${esc(b.participants)}</td><td><span class="pill ${esc(b.status)}">${esc(b.status)}</span><div class="conflict-badges">${conflictBadges(b)}</div></td></tr>`).join("")
         || `<tr><td colspan="8">${empty("No bookings match the filters.")}</td></tr>`}</tbody></table>`;
     accessibleActions($("#bTable"));
   }
@@ -532,13 +546,18 @@
     const draft = () => ({ status: $("#eStatus").value, trainingDate: $("#eDate").value, facilitator: $("#eFac").value,
       time: $("#eTime").value, venue: $("#eVenue").value, adminNotes: $("#eNotes").value });
     const showConflicts = () => {
-      const c = S.findConflicts(bookings, blocks, draft(), b.id);
-      $("#eConflict").innerHTML = c.length ? `<div class="alert">⚠ ${esc(S.conflictMessage(c))}</div>` :
+      const c = conflictsFor(draft(), b.id);
+      $("#eConflict").innerHTML = c.length ? `<div class="alert"><strong>⚠ Schedule conflicts</strong><ul class="conflict-details">${conflictDetails(draft(), b.id)}</ul><p>Competing pending requests do not reserve time. Review them before approval.</p></div>` :
         (S.isActive(draft().status) ? `<div class="alert ok">✔ No scheduling conflicts.</div>` : "");
     };
     ["#eStatus", "#eDate", "#eFac", "#eTime"].forEach(s => ($(s).onchange = showConflicts));
     showConflicts();
-    $("#modalBody").onclick = null;
+    $("#modalBody").onclick = e => {
+      const button = e.target.closest("[data-conflict-open]");
+      if (!button) return;
+      if (JSON.stringify(draft()) !== JSON.stringify({ status:b.status, trainingDate:b.trainingDate, facilitator:b.facilitator, time:b.time, venue:b.venue, adminNotes:b.adminNotes || "" }) && !confirm("Discard unsaved booking edits and view the conflicting booking?")) return;
+      openBooking(button.dataset.conflictOpen);
+    };
     $("#eCancel").onclick = closeModal;
     $("#eSave").onclick = async () => { if (await saveBooking(b.id, draft())) closeModal(); };
     $("#eDelete").onclick = async () => {

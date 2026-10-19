@@ -7,16 +7,21 @@ const eligible = b => b.topic === "Phone Videography";
 const open = b => eligible(b) && b.status === "Completed" && !!b.csatActivatedAt;
 const validId = id => typeof id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 const secret = process.env.SESSION_SECRET || "sdrf-dev-secret-change-me";
+const signingKey = process.env.CSAT_SIGNING_KEY;
+if (signingKey !== undefined && (signingKey.length < 32 || signingKey === secret)) throw new Error("CSAT signing key must be strong and separate from session signing.");
+const sharedProduction = require("./shared-production");
+const publicOrigin = process.env.CSAT_PUBLIC_ORIGIN;
+if (publicOrigin && publicOrigin !== sharedProduction.origin) throw new Error("Invalid public survey origin.");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function initializeSharing(booking) {
   if (eligible(booking) && !booking.csatSharing) booking.csatSharing = { nonce:crypto.randomBytes(24).toString("base64url"), revoked:false };
   return booking;
 }
-const shareSignature = (id, nonce) => crypto.createHmac("sha256", secret).update(JSON.stringify(["csat-session-v1", id, nonce])).digest("base64url");
+const shareSignature = (id, nonce, version = "s") => crypto.createHmac("sha256", version === "s2" ? signingKey : secret).update(JSON.stringify([version === "s2" ? "csat-session-v2" : "csat-session-v1", id, nonce])).digest("base64url");
 function sharingInfo(booking) {
-  const state = booking.csatSharing;
+  const state = booking.csatSharing, version = signingKey ? "s2" : "s";
   return { state:state?.revoked ? "revoked" : open(booking) ? "open" : "closed",
-    ...(state && !state.revoked ? { link:`/csat/#s.${booking.id}.${state.nonce}.${shareSignature(booking.id, state.nonce)}` } : {}) };
+    ...(state && !state.revoked ? { link:`${publicOrigin || ""}/csat/#${version}.${booking.id}.${state.nonce}.${shareSignature(booking.id, state.nonce, version)}` } : {}) };
 }
 async function ensureSharing(id) {
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -50,10 +55,10 @@ async function ownedSharing(record) {
 async function sharedResolve(token) {
   if (typeof token !== "string" || token.length > 260) throw fail(404, "Sharing link not found.");
   const parts = token.split(".");
-  if (parts.length !== 4 || parts[0] !== "s" || !validId(parts[1]) || !/^[A-Za-z0-9_-]{32}$/.test(parts[2]) || !/^[A-Za-z0-9_-]{43}$/.test(parts[3])) throw fail(404, "Sharing link not found.");
+  if (parts.length !== 4 || !["s", "s2"].includes(parts[0]) || (parts[0] === "s2" && !signingKey) || (parts[0] === "s" && sharedProduction.enabled) || !validId(parts[1]) || !/^[A-Za-z0-9_-]{32}$/.test(parts[2]) || !/^[A-Za-z0-9_-]{43}$/.test(parts[3])) throw fail(404, "Sharing link not found.");
   const row = await store.bookings.getWithVersion(parts[1]);
   if (!row || row.value.recordType || !eligible(row.value) || row.value.csatSharing?.revoked || row.value.csatSharing?.nonce !== parts[2] ||
-      !crypto.timingSafeEqual(Buffer.from(parts[3]), Buffer.from(shareSignature(parts[1], parts[2])))) throw fail(404, "Sharing link not found.");
+      !crypto.timingSafeEqual(Buffer.from(parts[3]), Buffer.from(shareSignature(parts[1], parts[2], parts[0])))) throw fail(404, "Sharing link not found.");
   return row;
 }
 function responseId(sessionId, attemptId) {
@@ -182,13 +187,13 @@ async function resolve(token) {
   return { attendee, booking };
 }
 async function survey(token, attemptId) {
-  if (typeof token === "string" && token.startsWith("s.")) return sharedSurvey(token, attemptId);
+  if (typeof token === "string" && /^(s|s2)\./.test(token)) return sharedSurvey(token, attemptId);
   const { attendee, booking } = await resolve(token);
   return { mode:"individual", state:attendee.value.response ? "answered" : open(booking.value) ? "open" : "closed",
     session:{ topic:booking.value.topic, trainingDate:booking.value.trainingDate, facilitator:booking.value.facilitator }, config };
 }
 async function submit(token, input, attemptId) {
-  if (typeof token === "string" && token.startsWith("s.")) return sharedSubmit(token, input, attemptId);
+  if (typeof token === "string" && /^(s|s2)\./.test(token)) return sharedSubmit(token, input, attemptId);
   const { attendee, booking } = await resolve(token);
   if (attendee.value.response) return { submitted:true, alreadySubmitted:true };
   if (!open(booking.value)) throw fail(400, "This survey is not accepting responses.");

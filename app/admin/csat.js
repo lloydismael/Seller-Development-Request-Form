@@ -4,7 +4,15 @@
   async function render(tab, view, ctx) {
     const current = ++generation, { S, identity, labels } = ctx;
     const live = () => current === generation && view.isConnected;
-    const error = e => { if (live()) { const p = document.createElement("p"); p.className = "alert"; p.setAttribute("role", "alert"); p.textContent = e.message; view.prepend(p); } };
+    const error = e => { if (live()) {
+      const loading = view.querySelector('[role="status"]');
+      if (loading?.textContent === "Loading…") loading.remove();
+      const p = document.createElement("p"); p.className = "alert"; p.setAttribute("role", "alert"); p.textContent = e.message; view.prepend(p);
+      if (e.code === "BACKEND_UPDATE_REQUIRED") {
+        const retry = document.createElement("button"); retry.type = "button"; retry.className = "btn"; retry.textContent = "Retry compatibility check";
+        retry.onclick = async () => { retry.disabled = true; try { await S.compatibility(true); await render(tab, view, ctx); } catch (err) { error(err); } finally { retry.disabled = false; } }; view.append(retry);
+      }
+    } };
     const warn = value => { if (value?.auditRecorded === false) error(new Error(value.warning)); };
     view.innerHTML = '<p role="status">Loading…</p>';
     try {

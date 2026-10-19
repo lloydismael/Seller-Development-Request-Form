@@ -40,6 +40,7 @@ function mockStore(env = {}) {
   const context = { module:{exports:{}},process:{env},__dirname:'api/src',URL,setTimeout,console:{warn(){}},require(name) {
     if (name === "@azure/data-tables") return {TableClient};
     if (name === "@azure/identity") return {DefaultAzureCredential:class DefaultAzureCredential {},ManagedIdentityCredential:class ManagedIdentityCredential {}};
+    if (name === "./shared-production") return { enabled:false };
     return require(name);
   } };
   vm.runInNewContext(source,context);

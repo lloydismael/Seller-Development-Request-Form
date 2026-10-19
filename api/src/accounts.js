@@ -34,6 +34,7 @@ async function bootstrap() {
   if (!bootstrapPending) bootstrapPending = (async () => {
     const existing = await store.accounts.get(LOCAL_ID);
     if (existing) return identity(existing);
+    if (require("./shared-production").enabled) throw fail("Production account prerequisite missing; bootstrap is disabled.", 503);
     const username = process.env.ADMIN_USERNAME || "admin";
     const password = process.env.ADMIN_PASSWORD || "Admin@123";
     if ((process.env.WEBSITE_SITE_NAME || process.env.NODE_ENV === "production") &&

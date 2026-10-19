@@ -4,6 +4,7 @@
  *  - STORAGE_CONNECTION_STRING set  -> Table Storage / Azurite compatibility
  *  - neither set                    -> local JSON only, never on a cloud host
  */
+const sharedProduction = require("./shared-production");
 const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
@@ -79,15 +80,15 @@ async function table(name) {
       const { TableClient } = require("@azure/data-tables");
       let c;
       if (ENDPOINT) {
-        const { DefaultAzureCredential, ManagedIdentityCredential } = require("@azure/identity");
+        const { DefaultAzureCredential, ManagedIdentityCredential, AzureCliCredential } = require("@azure/identity");
         credential ||= process.env.WEBSITE_SITE_NAME
           ? new ManagedIdentityCredential(process.env.STORAGE_MANAGED_IDENTITY_CLIENT_ID ? { clientId:process.env.STORAGE_MANAGED_IDENTITY_CLIENT_ID } : {})
-          : new DefaultAzureCredential();
+          : sharedProduction.enabled ? new AzureCliCredential({ tenantId:process.env.AZURE_TENANT_ID }) : new DefaultAzureCredential();
         c = new TableClient(ENDPOINT, TABLES[name], credential);
       } else {
         c = TableClient.fromConnectionString(CONN, TABLES[name], { allowInsecureConnection:/UseDevelopmentStorage|127\.0\.0\.1|localhost/.test(CONN) });
       }
-      await c.createTable().catch(e => { if (e.statusCode !== 409) throw e; });
+      if (!sharedProduction.enabled) await c.createTable().catch(e => { if (e.statusCode !== 409) throw e; });
       return c;
     })().catch(e => { delete clients[name]; throw e; });
   }

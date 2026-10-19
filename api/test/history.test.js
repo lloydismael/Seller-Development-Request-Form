@@ -33,7 +33,7 @@ function tableStore() {
   const module = { exports:{} };
   vm.runInNewContext(fs.readFileSync(require.resolve("../src/store"), "utf8"), {
     module, __dirname:path.resolve(__dirname, "..", "src"), process:{ env:{ STORAGE_TABLE_ENDPOINT:"https://example.table.core.windows.net" } }, URL,
-    require:name => name === "@azure/data-tables" ? { TableClient } : name === "@azure/identity" ? { DefaultAzureCredential:class {} } : require(name)
+    require:name => name === "./shared-production" ? { enabled:false } : name === "@azure/data-tables" ? { TableClient } : name === "@azure/identity" ? { DefaultAzureCredential:class {} } : require(name)
   });
   return { store:module.exports, rows, queries };
 }
@@ -179,7 +179,7 @@ test("local file owner queries retain records and deterministic pagination", asy
   fs.mkdirSync(directory);
   try {
     const module = { exports:{} }, ownerHash = "c".repeat(64);
-    vm.runInNewContext(fs.readFileSync(require.resolve("../src/store"), "utf8"), { module, require, __dirname:path.resolve(__dirname, "..", "src"),
+    vm.runInNewContext(fs.readFileSync(require.resolve("../src/store"), "utf8"), { module, require:name => name === "./shared-production" ? { enabled:false } : require(name), __dirname:path.resolve(__dirname, "..", "src"),
       process:{ env:{ STORAGE_TEST_FILE:path.join(directory, "db.json") } }, URL, setTimeout, console:{ warn() {} } });
     const store = module.exports;
     for (const id of ["a", "c", "b"]) await store.bookings.insert({ id, ownerHash, createdAt:"2026-10-14T00:00:00.000Z" });

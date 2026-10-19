@@ -60,13 +60,28 @@
   const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   // Static UI testing is deliberately opt-in; full-stack local testing defaults to API.
   const localOnly = isLocalHost && new URLSearchParams(location.search).get("storage") === "local";
-  let modeP;
+  let modeP, backendHealth;
+  async function compatibility(refresh = false) {
+    if (!await isApi()) return { supported:false, reason:"DEMO_UNAVAILABLE" };
+    if (refresh || !backendHealth) {
+      const r = await fetch("/api/health", { cache:"no-store", credentials:"same-origin", signal:AbortSignal.timeout(10000) });
+      if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw fail(503, "Backend compatibility could not be checked. Retry.");
+      backendHealth = await r.json();
+    }
+    return { supported:window.BookingApiContract?.compatible(backendHealth) === true, release:backendHealth.release || null };
+  }
+  const newFeature = url => url.startsWith("/api/training-sessions") || url.startsWith("/api/manage/facilitators");
   function mode() {
     if (localOnly) return Promise.resolve("local");
     return modeP || (modeP = fetch("/api/health", { cache:"no-store", signal:AbortSignal.timeout(10000) })
       .then(async r => {
         if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw new Error("API unavailable");
         const data = await r.json();
+        backendHealth = data;
+        if (data.dataset === "shared-production") {
+          const show = () => { if (!document.getElementById("liveDataWarning")) { const warning = document.createElement("div"); warning.id = "liveDataWarning"; warning.setAttribute("role", "alert"); warning.textContent = "LOCAL CODE / LIVE DATA — changes affect production bookings, accounts and CSAT."; warning.style.cssText = "position:sticky;top:0;z-index:10000;padding:12px;background:#fef3c7;color:#713f12;text-align:center;font-weight:700"; document.body.prepend(warning); } };
+          if (document.body) show(); else document.addEventListener("DOMContentLoaded", show, { once:true });
+        }
         if (data.ok !== true || (!isLocalHost && data.storage !== "table")) throw new Error("Shared storage unavailable");
         return "api";
       })
@@ -76,6 +91,8 @@
       }));
   }
   async function api(method, url, body) {
+    if (backendHealth?.dataset === "shared-production" && !["GET", "HEAD"].includes(method) && !["/api/auth/login", "/api/auth/logout"].includes(url) && !window.confirm("LOCAL CODE / LIVE DATA: this action writes to production. Continue?")) throw fail(400, "Production write cancelled.");
+    if (newFeature(url) && !(await compatibility()).supported) throw fail(503, "Backend update required. The linked API does not support CSAT and facilitator accounts yet.", { code:"BACKEND_UPDATE_REQUIRED" });
     if (!["GET", "HEAD"].includes(method)) writable();
     const r = await fetch(url, {
       method, credentials: "same-origin", mode:"same-origin", cache:"no-store",
@@ -86,7 +103,8 @@
     const ct = r.headers.get("content-type") || "";
     const data = ct.includes("json") ? await r.json() : null;
     if (!r.ok || (!data && r.status !== 204 && method !== "DELETE")) {
-      const message = (data && data.error) || (r.status === 401 || r.status === 403 ? "Session expired – please log in again." : `Request failed (${r.status})`);
+      if (newFeature(url) && r.status === 404 && !data) throw fail(503, "Backend update required. The linked API is missing this feature route.", { code:"BACKEND_UPDATE_REQUIRED" });
+      const message = (data && data.error) || (r.status === 403 ? "Access denied. Check your permissions and application origin." : r.status === 401 ? "Session expired – please log in again." : `Request failed (${r.status})`);
       // Current backend has a generic form/CAS 409 and a separate slot message.
       // Prefer an explicit server code when available; do not mistake every 409 for a slot conflict.
       const code = data?.code || (r.status === 409 ? (/^Record or form changed\./.test(message) || /formVersion|form is outdated|form changed.*latest form/i.test(message) ? "FORM_EXPIRED" : "SLOT_CONFLICT") : undefined);
@@ -115,7 +133,7 @@
   }
 
   window.BookingStore = {
-    slotRange, overlaps, isActive, findConflicts, conflictMessage, availabilityFor, mode,
+    slotRange, overlaps, isActive, findConflicts, conflictMessage, availabilityFor, mode, compatibility,
 
     async create(b) {
       writable();

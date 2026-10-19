@@ -51,6 +51,39 @@ answer on the selected route is valid and scheduling availability is ready. Opti
 questions may remain blank; invalid optional answers must be corrected. Clearing or
 invalidating an answer hides the button again. Draft previews never enable submission.
 
+## Opt-in localhost with production tables
+
+`api/scripts/start-shared-production.ps1 -AcknowledgeLiveWrites -CsatKeyFile <encrypted-key.xml>`
+runs current workspace frontend/API on localhost:4281 using the exact production tables.
+Use Node22 and Azure CLI authentication to the production tenant with approved table-scoped
+Storage Table Data Contributor access. The key file is an Export-Clixml SecureString,
+protected for the current Windows user; never commit it or copy the production session secret.
+The launcher generates a separate local login-session secret and uses the dedicated shared
+CSAT key. Production still accepts legacy shared links; new s2 links use the separate key.
+Distributed QR links point to the live HTTPS survey, not localhost.
+
+This mode fails if prerequisites/table access are missing, never creates tables or bootstraps
+an admin, and displays LOCAL CODE / LIVE DATA warnings. Local writes affect live bookings,
+accounts, form publication and feedback. Ordinary isolated JSON tests remain available and
+existing isolated records are not merged. Shared production is not safe for destructive tests.
+Local code iteration avoids deployments, but Azure network latency and transaction costs remain.
+
+## Frontend/backend release compatibility
+
+Production uses a separately linked Functions API. Updating the Static Web App alone
+never deploys backend routes. Build and deploy the compatible independent API first;
+`GET /api/health` exposes non-sensitive protocol, release and feature capabilities.
+Production frontend pushes run `api/scripts/check-production-compatibility.js` and fail
+before upload if the backend is incompatible. PR previews do not query this production gate.
+New CSAT/account operations show **Backend update required** with a compatibility retry
+when unavailable, without disabling existing core booking/profile behavior.
+
+Local facilitator accounts are not production accounts. Create them through the live
+Facilitator accounts screen using new credentials; never copy local settings/signing
+secrets or the development database. Preserve existing account records and storage when
+releasing backend code. If rollback is necessary after new data exists, prefer a compatible
+frontend rollback rather than downgrading the account/storage-aware API.
+
 ## Phone Videography CSAT and facilitator access
 
 **Admin → Facilitator accounts** creates local username/password accounts mapped

@@ -6,7 +6,7 @@ const ACTIONS = ["booking.create", "booking.update", "booking.delete", "block.cr
 const safe = v => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 256);
 async function record(action, actor, target, summary) {
   if (!ACTIONS.includes(action)) throw new TypeError("Unknown audit action.");
-  const item = { id:randomUUID(), action, actor:safe(actor || "anonymous"), target:safe(target), timestamp:new Date().toISOString(), summary:safe(summary) };
+  const item = { id:randomUUID(), action, actor:safe(actor || "anonymous"), target:safe(target), timestamp:new Date().toISOString(), summary:safe(summary), ...(require("./shared-production").enabled ? { source:"local-shared" } : {}) };
   await store.activity.compareAndSwap(item.id, item, null);
 }
 async function list(query) {

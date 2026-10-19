@@ -170,7 +170,7 @@ http("csatSubmit", { methods:["POST"], authLevel:"anonymous", route:"csat/submit
 http("health", {
   methods: ["GET"], authLevel: "anonymous", route: "health",
   handler: async () => {
-    try { await store.checkConnection(); return json(200, { ok:true, storage:store.kind }); }
+    try { await store.checkConnection(); return json(200, { ok:true, storage:store.kind, dataset:require("../shared-production").enabled ? "shared-production" : process.env.WEBSITE_SITE_NAME ? "production" : "isolated", ...require("../capabilities") }); }
     catch { return json(503, { ok:false, error:"Storage is unavailable. Check backend storage configuration and permissions." }); }
   }
 });

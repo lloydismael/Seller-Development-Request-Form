@@ -22,6 +22,14 @@ jobs:
         with:
           submodules: true
           lfs: false
+      - name: Set up Node for production compatibility check
+        if: github.event_name == 'push'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify independent production API compatibility
+        if: github.event_name == 'push'
+        run: node api/scripts/check-production-compatibility.js
       # SellerDevelopment uses deploymentAuthPolicy: GitHub.
       - name: Get GitHub identity token
         uses: actions/github-script@v7

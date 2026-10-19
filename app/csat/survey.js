@@ -21,6 +21,9 @@
     if (q.type === "choice") return q.choices.some(c => c.id === value);
     return typeof value === "string" && !!value.trim() && value.length <= q.max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
   }
+  fetch("/api/health", { cache:"no-store" }).then(r => r.json()).then(data => {
+    if (data.dataset === "shared-production") { const warning = document.createElement("p"); warning.setAttribute("role", "alert"); warning.textContent = "LOCAL CODE / LIVE DATA — survey submissions are saved in production."; warning.style.cssText = "background:#fef3c7;color:#713f12;padding:12px;text-align:center"; document.body.prepend(warning); }
+  }).catch(() => {});
   const appearance = (async () => {
     try {
       const r = await fetch("/api/form-config", { cache:"no-store", credentials:"same-origin", signal:AbortSignal.timeout(5000) });

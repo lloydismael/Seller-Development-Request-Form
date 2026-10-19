@@ -24,6 +24,12 @@ frontend artifact. `npm run build:qr` (with development dependencies installed) 
 the committed browser encoder; independent API remote builds do not need QR dev packages.
 Do not send sharing URLs to external QR services or package local test records/settings.
 
+Production compatibility gate: deploy the independent API before frontend pushes.
+`node api/scripts/check-production-compatibility.js` validates the public protocol and
+capability contract through the custom-domain proxy; storage health alone is insufficient.
+ZIP entry names must use forward slashes even when packaging on Windows. Verify these
+names explicitly; a byte-correct archive with backslash paths fails Linux remote builds.
+
 Shared-schema release safety: the production Static Web Apps workflow deploys only the frontend (`api_location` is empty). Deploy and verify the compatible independent backend **before** publishing configurations that use new schema properties. An older backend rejects unknown persisted properties and returns 503 from both public and admin form loaders even while `/api/health` reports healthy storage. Repair schema drift by deploying freshly built compatible API assets; do not remove saved settings or substitute defaults.
 
 See [Functions deployment technologies](https://learn.microsoft.com/en-us/azure/azure-functions/functions-deployment-technologies) and the private deployment checklist. No package was created or uploaded by the artifact-fix task.

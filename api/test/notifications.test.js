@@ -106,6 +106,38 @@ test("facilitator lookup requires both directory assignment and exact account la
   assert.deepEqual(deliverable(rows).map(row=>row.value.recipient),["requester@example.com"]);
   assert.equal(rows.some(row=>row.value.state === "skipped"),true);
 });
+test("styled emails highlight booking details and use audience-specific links with plain text fallback", async () => {
+  const f = fixture();
+  const created = deliverable(await f.notifications.operations(null, { ...booking, requestor:'Name <script>', division:'Sales & Support' }, null));
+  for (const row of created) {
+    assert.equal(row.value.audience, "staff");
+    const payload = message(row.value, configuration(settings));
+    assert.match(payload.content.html, /href="https:\/\/booking.example.com\/admin\/\?request=booking-one"/);
+    assert.match(payload.content.html, /View request/);
+    assert.match(payload.content.html, /Name &lt;script&gt;/);
+    assert.match(payload.content.html, /Sales &amp; Support/);
+    assert.match(payload.content.html, /<strong>2099-01-01<\/strong>/);
+    assert.match(payload.content.plainText, /View request: https:\/\/booking.example.com\/admin\/\?request=booking-one/);
+    assert.doesNotMatch(payload.content.html, /<script>/);
+  }
+  const approval = deliverable(await f.notifications.operations(booking, { ...booking, status:"Approved" }, { role:"admin" }));
+  const requester = approval.find(row => row.value.recipient === "requester@example.com");
+  assert.equal(requester.value.audience, "requestor");
+  const publicMail = message(requester.value, configuration(settings));
+  assert.match(publicMail.content.html, /href="https:\/\/booking.example.com\/"[^>]*>Seller Development Request Form<\/a>/);
+  assert.doesNotMatch(publicMail.content.html, /\/admin\//);
+  assert.match(publicMail.content.plainText, /Seller Development Request Form: https:\/\/booking.example.com\//);
+  const facilitator = approval.find(row => row.value.recipient === "alex@example.com");
+  assert.equal(facilitator.value.audience, "staff");
+  assert.match(message(facilitator.value, configuration(settings)).content.html, /\/admin\/\?request=booking-one/);
+});
+test("legacy decision emails safely use public links and hostile values cannot inject HTML", () => {
+  const row = { bookingId:'bad\" id', booking:{ ...booking, venue:'\" onclick=\"bad <img src=x>' }, recipient:"recipient@example.com", events:["rejected"] };
+  const payload = message(row, configuration(settings));
+  assert.doesNotMatch(payload.content.html, /<img|onclick="bad/);
+  assert.match(payload.content.html, /&lt;img src=x&gt;/);
+  assert.doesNotMatch(payload.content.html, /\/admin\//);
+});
 test("all notification messages request high importance without changing recipients or subjects", () => {
   for (const events of [["created"], ["assigned"], ["approved"], ["rejected"], ["approved", "assigned"]]) {
     const payload = message({ bookingId:booking.id, booking, recipient:"recipient@example.com", events }, configuration(settings));

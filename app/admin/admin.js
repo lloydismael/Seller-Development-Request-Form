@@ -696,12 +696,33 @@
     S.replaceLocal(out, bl);
   }
 
+  async function openLinkedRequest() {
+    const params = new URLSearchParams(location.search);
+    const id = params.get("request");
+    if (!id) return;
+    if (params.getAll("request").length !== 1 || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) {
+      toast("Invalid request link."); return;
+    }
+    if (identity.role === "facilitator") {
+      st.tab = "csat";
+      render();
+      return;
+    }
+    if (!bookings.some(booking => booking.id === id)) {
+      toast("This request is unavailable or you do not have access."); return;
+    }
+    st.tab = "bookings";
+    render();
+    openBooking(id);
+  }
+
   async function initialize() {
     try {
       if (!sourceConfig) applyConfig(mode === "api" ? (await S.formConfig()).config : window.FORM_CONFIG);
       await reload();
-    } catch (err) {
-      $("#view").innerHTML = `<div class="alert" role="alert">Could not load form configuration: ${esc(err.message)}. No default configuration was substituted.</div><button class="btn" id="retryConfig">Retry configuration</button>`;
+            await openLinkedRequest();
+          } catch (err) {
+            $("#view").innerHTML = `<div class="alert" role="alert">Could not load form configuration: ${esc(err.message)}. No default configuration was substituted.</div><button class="btn" id="retryConfig">Retry configuration</button>`;
       $("#retryConfig").onclick = initialize;
     }
   }

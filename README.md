@@ -50,6 +50,13 @@ the local timer. Restart the local API after changing its settings. The Azure wo
 then delivers the shared outbox; deploying Azure settings does not configure localhost.
 Keep ordinary isolated development notification creation disabled.
 
+Notifications include a readable HTML summary with highlighted status, date, time and
+training topic, plus a plain-text fallback. Staff notifications use a **View request**
+link that opens the specific booking after sign-in; facilitators see only their assigned
+training. Requestor notifications use **Seller Development Request Form**, linked to
+`https://sellerdevelopmentrf.clouditechsolution.com/`. Request IDs are navigation only,
+not access tokens; existing authentication and role authorization remain required.
+
 All notification emails request high importance using `Importance`, `X-Priority` and
 `X-MSMail-Priority` headers. Mail clients decide whether to display a priority indicator;
 these headers cannot guarantee Gmail's Important label or change previously delivered mail.

@@ -45,12 +45,25 @@ function message(row, config) {
   else if (events.includes("created")) subject = "New booking request";
   else if (events.includes("assigned")) subject = "Booking assigned";
   const snapshot = row.booking;
+  const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  // Older rows lack audience attribution: decision-only emails use the public form link.
+  const staff = row.audience === "staff" || events.includes("created") || events.includes("assigned");
+  const link = staff ? `${config.origin}/admin/?request=${encodeURIComponent(row.bookingId)}` : `${config.origin}/`;
+  const linkLabel = staff ? "View request" : "Seller Development Request Form";
+  const intro = events.includes("rejected") ? "Your booking request has been rejected." :
+    events.includes("approved") ? (staff ? "This booking request has been approved." : "Your booking request has been approved.") :
+    events.includes("assigned") ? "A booking request has been assigned to you." : "A new booking request is ready for review.";
+  const details = [["Request reference", row.bookingId], ["Status", snapshot.status], ["Training date", snapshot.trainingDate],
+    ["Training time", snapshot.time], ["Topic", snapshot.topic], ["Venue", snapshot.venue], ["Facilitator", snapshot.facilitator],
+    ...(staff ? [["Requestor", snapshot.requestor], ["Sales division", snapshot.division]] : [])];
+  const statusColors = snapshot.status === "Approved" ? ["#dcfce7", "#166534"] : snapshot.status === "Rejected" ? ["#fee2e2", "#991b1b"] : ["#fef3c7", "#92400e"];
+  const detailRows = details.map(([label, value]) => `<tr><th scope="row" align="left" valign="top" style="padding:12px 16px;width:35%;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:600;color:#475569;">${escape(label)}</th><td valign="top" style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-size:15px;color:#0f172a;overflow-wrap:anywhere;">${label === "Status" ? `<strong style="display:inline-block;padding:4px 10px;border-radius:6px;background:${statusColors[0]};color:${statusColors[1]};">${escape(value || "Not recorded")}</strong>` : `<${["Training date", "Training time", "Topic"].includes(label) ? "strong" : "span"}>${escape(value || "Not recorded")}</${["Training date", "Training time", "Topic"].includes(label) ? "strong" : "span"}>`}</td></tr>`).join("");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;"><tr><td style="padding:24px;background:#0f766e;color:#ffffff;"><p style="margin:0 0 8px;font-size:13px;font-weight:bold;letter-spacing:1px;">SELLER DEVELOPMENT</p><h1 style="margin:0;font-size:24px;line-height:1.3;">${escape(subject)}</h1></td></tr><tr><td style="padding:24px;"><p style="margin:0 0 20px;font-size:16px;">${escape(intro)}</p><table aria-label="Booking request details" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#f8fafc;">${detailRows}</table><p style="margin:24px 0 12px;"><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#0f766e;border-radius:6px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;">${linkLabel}</a></p><p style="margin:0;color:#475569;font-size:13px;">${staff ? "Sign in with your authorized account to view this request." : "Visit the form website to create a request or access your saved requests on the original browser."}</p></td></tr><tr><td style="padding:16px 24px;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;">This is an automated booking notification. Do not reply to this email.</td></tr></table></td></tr></table></body></html>`;
   return { senderAddress:config.sender, recipients:{ to:[{ address:row.recipient }] },
     headers:{ Importance:"high", "X-Priority":"1", "X-MSMail-Priority":"High" },
-    content:{ subject, plainText:[subject, `Reference: ${text(row.bookingId)}`,
-      `Status: ${snapshot.status}`, `Date: ${snapshot.trainingDate}`, `Time: ${snapshot.time}`,
-      `Topic: ${snapshot.topic}`, `Venue: ${snapshot.venue}`,
-      "Open the booking app and sign in or use your saved request access link to view details.", config.origin].join("\n") } };
+    content:{ subject, html, plainText:[subject, "", intro, "", ...details.map(([label, value]) => `${label}: ${value || "Not recorded"}`), "",
+      `${linkLabel}: ${link}`, staff ? "Sign in with your authorized account to view this request." : "Use your original browser to access saved requests.",
+      "This is an automated notification. Do not reply."].join("\n") } };
 }
 
 // SDK retries are disabled: a lost send response cannot safely be treated as a failed send.
@@ -112,13 +125,14 @@ function createNotifications({ store, provider, env = process.env, now = Date.no
     const rejected = !!before && before.status !== after.status && after.status === "Rejected";
     const managerApproval = approved && ["admin", "supervisor"].includes(actor?.role);
     if (!created && !assigned && !approved && !rejected) return [];
-    const recipients = new Map();
+    const recipients = new Map(), audiences = new Map();
     const skipped = {};
-    const add = (address, event) => {
+        const add = (address, event, audience = "staff") => {
       const normalized = email(address);
       if (!normalized) { skipped[event] = (skipped[event] || 0) + 1; return; }
       if (!recipients.has(normalized)) recipients.set(normalized, new Set());
       recipients.get(normalized).add(event);
+      if (audience === "staff" || !audiences.has(normalized)) audiences.set(normalized, audience);
     };
     if (created || assigned || managerApproval) {
       const db = getStore();
@@ -135,11 +149,11 @@ function createNotifications({ store, provider, env = process.env, now = Date.no
         if (managerApproval) add(account?.profile?.email, "approved");
       }
     }
-    if (approved || rejected) add(after.requesterEmail, approved ? "approved" : "rejected");
+    if (approved || rejected) add(after.requesterEmail, approved ? "approved" : "rejected", "requestor");
     const createdAt = new Date(now()).toISOString();
-    const booking = Object.fromEntries(["status", "trainingDate", "time", "topic", "venue"].map(key => [key, text(after[key])]));
+    const booking = Object.fromEntries(["status", "trainingDate", "time", "topic", "venue", "facilitator", "requestor", "division"].map(key => [key, text(after[key])]));
     const rows = [...recipients].map(([recipient, events]) => ({ value:{ id:`email-${uuid()}`, recordType:RECORD_TYPE,
-      bookingId:after.id, booking, recipient, events:[...events].sort(), state:"pending", attempts:0,
+      bookingId:after.id, booking, recipient, audience:audiences.get(recipient), events:[...events].sort(), state:"pending", attempts:0,
       createdAt, nextAttemptAt:createdAt }, version:null }));
     if (Object.keys(skipped).length) rows.push({ value:{ id:`email-${uuid()}`, recordType:RECORD_TYPE,
       bookingId:after.id, state:"skipped", reason:"missing-or-invalid-recipient", skipped, createdAt }, version:null });

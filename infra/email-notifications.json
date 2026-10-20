@@ -1,0 +1,237 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.48.1.52935",
+      "templateHash": "12312621699540102010"
+    }
+  },
+  "parameters": {
+    "enabled": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Standalone opt-in only. Never include in main.bicep without separate approval."
+      }
+    },
+    "unitedStatesDataConsent": {
+      "type": "bool",
+      "allowedValues": [
+        true
+      ],
+      "metadata": {
+        "description": "Required explicit consent: documented ECS data geography is United States, not the Function region."
+      }
+    },
+    "costApproved": {
+      "type": "bool",
+      "allowedValues": [
+        true
+      ],
+      "metadata": {
+        "description": "Required explicit approval of pay-as-you-go email, Table, Function, and telemetry costs."
+      }
+    },
+    "retirementRiskAccepted": {
+      "type": "bool",
+      "allowedValues": [
+        true
+      ],
+      "metadata": {
+        "description": "Required lifecycle consent: ACS Email retires September 30, 2028; onboarding/expansion restrictions begin October 23, 2026. Recheck eligibility before deploying."
+      }
+    },
+    "provisioningStage": {
+      "type": "string",
+      "defaultValue": "domain",
+      "allowedValues": [
+        "domain",
+        "sender"
+      ],
+      "metadata": {
+        "description": "First deploy domain; deploy sender only after Domain, SPF, DKIM and DKIM2 are Verified in ECS."
+      }
+    },
+    "emailServiceName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63
+    },
+    "communicationServiceName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "metadata": {
+        "description": "NEW dedicated ACS resource name, not an existing shared Communication Service."
+      }
+    },
+    "senderDomain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "metadata": {
+        "description": "Actual DNS domain/subdomain controlled by the operator. No example domain is provisioned by default."
+      }
+    },
+    "functionManagedIdentityPrincipalId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "metadata": {
+        "description": "Object/principal ID of the existing separately linked Function managed identity, NOT its client ID. No Function app is created or modified."
+      }
+    },
+    "senderDisplayName": {
+      "type": "string",
+      "defaultValue": "Booking notifications",
+      "metadata": {
+        "description": "Display name for the noreply sender. This does not create an inbound mailbox."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {}
+    }
+  },
+  "variables": {
+    "approved": "[and(and(and(parameters('enabled'), parameters('unitedStatesDataConsent')), parameters('costApproved')), parameters('retirementRiskAccepted'))]",
+    "provisionSender": "[and(variables('approved'), equals(parameters('provisioningStage'), 'sender'))]",
+    "dataLocation": "United States",
+    "roleDefinitionName": "[guid(resourceGroup().id, parameters('communicationServiceName'), 'booking-email-sender-v1')]"
+  },
+  "resources": [
+    {
+      "condition": "[variables('approved')]",
+      "type": "Microsoft.Communication/emailServices",
+      "apiVersion": "2025-09-01",
+      "name": "[parameters('emailServiceName')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "dataLocation": "[variables('dataLocation')]"
+      }
+    },
+    {
+      "condition": "[variables('approved')]",
+      "type": "Microsoft.Communication/emailServices/domains",
+      "apiVersion": "2025-09-01",
+      "name": "[format('{0}/{1}', parameters('emailServiceName'), parameters('senderDomain'))]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "domainManagement": "CustomerManaged",
+        "userEngagementTracking": "Disabled"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Communication/emailServices', parameters('emailServiceName'))]"
+      ]
+    },
+    {
+      "condition": "[variables('provisionSender')]",
+      "type": "Microsoft.Communication/emailServices/domains/senderUsernames",
+      "apiVersion": "2025-09-01",
+      "name": "[format('{0}/{1}/{2}', parameters('emailServiceName'), parameters('senderDomain'), 'noreply')]",
+      "properties": {
+        "username": "noreply",
+        "displayName": "[parameters('senderDisplayName')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain'))]"
+      ]
+    },
+    {
+      "condition": "[variables('provisionSender')]",
+      "type": "Microsoft.Communication/communicationServices",
+      "apiVersion": "2025-09-01",
+      "name": "[parameters('communicationServiceName')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "dataLocation": "[variables('dataLocation')]",
+        "disableLocalAuth": true,
+        "publicNetworkAccess": "Enabled",
+        "linkedDomains": [
+          "[resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain'))]"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain'))]"
+      ]
+    },
+    {
+      "condition": "[variables('provisionSender')]",
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[variables('roleDefinitionName')]",
+      "properties": {
+        "roleName": "[format('Booking email sender {0}-{1}', parameters('communicationServiceName'), uniqueString(resourceGroup().id))]",
+        "description": "Documented ACS email permissions, restricted by assignment to this dedicated ACS resource; no keys, delete, or RBAC management.",
+        "type": "CustomRole",
+        "assignableScopes": [
+          "[resourceGroup().id]"
+        ],
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Communication/CommunicationServices/Read",
+              "Microsoft.Communication/CommunicationServices/Write",
+              "Microsoft.Communication/EmailServices/write"
+            ],
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[variables('provisionSender')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))]",
+      "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName')), parameters('functionManagedIdentityPrincipalId'), variables('roleDefinitionName'))]",
+      "properties": {
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionName'))]",
+        "principalId": "[parameters('functionManagedIdentityPrincipalId')]",
+        "principalType": "ServicePrincipal",
+        "description": "Existing Function managed identity email access to dedicated ACS resource only."
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))]",
+        "[resourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "emailDomainResourceId": {
+      "type": "string",
+      "value": "[if(variables('approved'), resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain')), '')]"
+    },
+    "dnsVerificationRecords": {
+      "type": "object",
+      "value": "[if(variables('approved'), reference(resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain')), '2025-09-01').verificationRecords, createObject())]"
+    },
+    "dnsVerificationStates": {
+      "type": "object",
+      "value": "[if(variables('approved'), reference(resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain')), '2025-09-01').verificationStates, createObject())]"
+    },
+    "emailEndpoint": {
+      "type": "string",
+      "value": "[if(variables('provisionSender'), format('https://{0}', reference(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName')), '2025-09-01').hostName), '')]"
+    },
+    "emailSenderAddress": {
+      "type": "string",
+      "value": "[if(variables('provisionSender'), format('noreply@{0}', reference(resourceId('Microsoft.Communication/emailServices/domains', parameters('emailServiceName'), parameters('senderDomain')), '2025-09-01').fromSenderDomain), '')]"
+    },
+    "emailSenderRoleDefinitionId": {
+      "type": "string",
+      "value": "[if(variables('provisionSender'), resourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionName')), '')]"
+    },
+    "deploymentStage": {
+      "type": "string",
+      "value": "[if(variables('approved'), parameters('provisioningStage'), 'disabled')]"
+    }
+  }
+}

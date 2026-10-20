@@ -31,7 +31,7 @@ test("append keeps legacy actors and sanitizes only allowlisted actor details", 
 test("booking create snapshots validated requestor as self-reported even with an admin session", async () => {
   const h = harness(), token = await h.login();
   const input = { formVersion:(await h.forms.published()).version, requestor:"Forged requestor", actorDetails:{ kind:"authenticated", name:"Forged actor" },
-    answerValues:{ name:"  Real Requestor  ", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
+    answerValues:{ name:"  Real Requestor  ", requesterEmail:"requestor@example.com", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
       t_tech:"Meta Andromeda", date:"2099-12-01", facilitator:defaults.questions.facilitator.choices[0], time:defaults.questions.time.choices[0],
       venue:defaults.questions.venue.choices[0], participants:25, recommendations:"Test" } };
   const result = await h.handlers.get("bookings")(h.request("POST", input, token, { "x-forwarded-for":"192.0.2.1" }));

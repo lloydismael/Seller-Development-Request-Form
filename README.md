@@ -28,10 +28,39 @@ text wrap without clipping. Training Venue uses smaller tiles, icons, and spacin
 with an inline Other field. Its options scroll internally on shorter screens so the
 active zoomed card stays compact without hiding choices. Compact form settings remain supported.
 
+## Email notifications
+
+The required **Your Email** question follows the requestor name and stores a validated
+`requesterEmail` booking field. Existing published/draft forms receive a versioned,
+compare-and-swap migration on their next API load; existing requests are not backfilled.
+Old form versions must refresh before submission. Customized labels, routes and draft
+changes are preserved. The email question cannot be removed or made optional.
+
+Email delivery is opt-in: deploy the API and configure Azure Communication Services
+Email before enabling it. New requests notify all enabled administrators/supervisors
+with a valid profile email and the assigned facilitator. Assignment changes notify the
+new facilitator. Approved/rejected decisions notify the requestor; management approval
+also notifies the assigned facilitator. Facilitator self-approval does not generate a
+second approval email to themselves. Missing account emails are recorded as skipped; usernames
+are not treated as email addresses.
+
+All notification emails request high importance using `Importance`, `X-Priority` and
+`X-MSMail-Priority` headers. Mail clients decide whether to display a priority indicator;
+these headers cannot guarantee Gmail's Important label or change previously delivered mail.
+
+Notifications are stored atomically with booking changes in a durable internal outbox,
+not sent during the HTTP request. The worker uses retries, versioned claims and provider
+operation tracking; email failures do not undo committed bookings. Existing Table Storage
+and Functions hosting are reused. No Azure resources are provisioned automatically.
+See [email infrastructure and setup requirements](infra/EMAIL-NOTIFICATIONS.md).
+Azure Communication Services Email retires September 30, 2028; review its lifecycle,
+US data geography, sending costs, DNS verification and a future provider migration
+before approving production activation.
+
 The required requestor name section is centered in the available page space on first
-load, reset, or when the name is cleared. Sales Division and subsequent questions
+load, reset, or when the name is cleared. Your Email, Sales Division and subsequent questions
 appear after a valid name is completed by pressing Enter or leaving the name field;
-the second question becomes active and scrolls into view. Typing alone does not
+the Your Email question becomes active and scrolls into view. Typing alone does not
 advance or show the Submit request button. Clearing the name hides downstream
 questions and clears their answers. The current question has a persistent, theme-aware
 focus glow and centered animated zoom (6% on desktop, 3% on mobile), with

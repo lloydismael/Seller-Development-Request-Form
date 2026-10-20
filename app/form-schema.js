@@ -9,7 +9,7 @@
   "use strict";
   const MAX_BYTES = 30 * 1024;
   const REQUIRED = ["requestor", "division", "category", "trainingDate", "facilitator", "time", "venue"];
-  const FIELDS = [...REQUIRED, "director", "topic", "participants", "recommendations"];
+  const FIELDS = [...REQUIRED, "requesterEmail", "director", "topic", "participants", "recommendations"];
   const TYPES = ["text", "textarea", "email", "number", "date", "choice", "multi"];
   const GLASS_DEFAULTS = Object.freeze({ glassEnabled:false, glassTransparency:20, glassBlur:12 });
   const unsafe = new Set(["__proto__", "prototype", "constructor"]);
@@ -107,6 +107,7 @@
       }
       if (v.min !== undefined && v.max !== undefined && v.min > v.max) fail("min exceeds max.");
       if (v.field === "participants" && v.type !== "number") fail("participants must be number.");
+      if (v.field === "requesterEmail" && (v.type !== "email" || !v.required)) fail("requesterEmail must be a required email question.");
       if (v.field && !["topic"].includes(v.field) && v.type === "multi") fail("Only topic supports a multi-valued booking mapping.");
       out.questions[key] = v;
     }
@@ -158,6 +159,7 @@
     const result = walk(out.start);
     if (memo.size !== ids.length) fail("Every question must be reachable from start.");
     if (REQUIRED.some(f => !result.guaranteed.has(f))) fail("Every branch must include required fields: " + REQUIRED.join(", "));
+    if (result.possible.has("requesterEmail") && !result.guaranteed.has("requesterEmail")) fail("Every branch must include Your Email.");
     for (const field of FIELDS.filter(f => !["director", "topic"].includes(f))) {
       if (Object.values(Q).filter(q => q.field === field).length > 1) fail("Only director/topic may alias exclusive branches.");
     }
@@ -182,7 +184,7 @@
           if (!Array.isArray(value) || new Set(value).size !== value.length || value.some(v => typeof v !== "string" || !q.choices.map(label).includes(v)) || value.length < (q.min || 0) || value.length > (q.max || q.choices.length)) fail("Invalid multi answer: " + key);
           value = value.slice();
         } else {
-          value = text(value, q.type === "textarea" ? 2000 : 200);
+          value = text(value, q.type === "textarea" ? 2000 : q.type === "email" ? 254 : 200);
           if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) fail("Invalid email: " + key);
           if (q.type === "date" && !validDate(value)) fail("Invalid calendar date: " + key);
           if (q.type === "choice" && !q.choices.map(label).includes(value) && !q.allowOther) fail("Invalid choice: " + key);

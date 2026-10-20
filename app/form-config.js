@@ -10,7 +10,9 @@ const FORM_CONFIG = {
   title: "Seller Development Request Form",
   start: "name",
   questions: {
-    name: { title: "Name of Requestor", type: "text", required: true, field: "requestor", next: "division" },
+    name: { title: "Name of Requestor", type: "text", required: true, field: "requestor", next: "requesterEmail" },
+    requesterEmail: { title: "Your Email", type: "email", required: true, field: "requesterEmail", next: "division",
+      help: "Receive email notifications with updates on your request.", placeholder: "you@example.com" },
 
     division: {
       title: "Sales Division", type: "choice", required: true, field: "division",

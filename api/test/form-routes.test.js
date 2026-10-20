@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { harness } = require("./api-harness");
 const defaults = require("../../app/form-config");
-const values = () => ({ name:"Requestor", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
+const values = () => ({ name:"Requestor", requesterEmail:"requestor@example.com", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
   t_tech:"Meta Andromeda", date:"2026-12-01", facilitator:defaults.questions.facilitator.choices[0], time:defaults.questions.time.choices[0],
   venue:defaults.questions.venue.choices[0], participants:25, recommendations:"Test" });
 

@@ -1,6 +1,67 @@
-# Production API route restoration
+# Azure email notification activation
 
 Status: Deployed
+
+## Current bounded high-importance code-only release — 2026-10-21
+Explicitly approved: publish existing API source with notification headers `Importance: high`, `X-Priority: 1`, `X-MSMail-Priority: High` to the same existing Function, subscription and region. All email flags/settings, identity/authentication, SWA link, storage, DNS and roles must remain unchanged. No provisioning, additional test emails, outbox rows, booking/account mutations or git commit.
+All validation checks pass (current code-only validation):
+- [x] Core: authenticated CLI, existing Running/node22 target, exact clean API ZIP and packaged remote-build command pass. ARM helper/validate/what-if not applicable: no IaC deployment; no provisioning template executed.
+- [x] Docker not applicable: source ZIP.
+- [x] Policy: no provisioning/configuration writes; existing effective deployment permissions include `*`, Azure enforces authorization.
+- [x] Canonical build; 22 notification + 3 integration = 25 targeted tests pass; all 303 isolated tests pass, zero failures. Static dedicated ACS-only role/MI assignments unchanged. Editor diagnostics and diff check pass.
+- [x] Baseline all settings/slot flags, auth, identity, Function config and SWA link captured with DPAPI encryption. Compatibility/health 200/table, direct and forged principal 401; anonymous booking 401. Timer registration checked after publish; no mail test authorized.
+
+### 7. High-importance release validation proof
+2026-10-20T16:23Z: exact API-only ZIP 22 files / 53154 bytes, SHA256 `C10DF5E1540E12F2F195AA7E6229E0B569B5E94BFE4B20742C1930BC31DF2463`; portable ZIP entry names and every entry hash compared with current source. Exact notification payload contains all three high-importance headers. No settings/tests/scripts/node_modules or verifier included. Repository and staged packaged `npm run build` pass. Actual validate workflow executed using existing session-only Windows enum compatibility copy after installed workflow failed TryParse overload; no installed skill modified. Additional local packaging portability issue fixed before publish, final ZIP independently verified. Gmail controls Important labeling; already delivered mail cannot be changed. No live email send or verification outbox rows authorized.
+
+
+
+### High-importance release deployed proof
+`az functionapp deployment source config-zip --build-remote true` explicit existing target, exit 0. `az webapp log deployment list` confirms active complete deployment `28e35d73-0a2d-4d62-8ffb-f842072fdab1`, status 4/success, completed `2026-10-20T16:25:41.5513123Z`. Uploaded SHA256 `C10DF5E1540E12F2F195AA7E6229E0B569B5E94BFE4B20742C1930BC31DF2463` with exact header payload verification. Post-publish script PASS: all 19 settings plus slot flags/identity/auth/Function config/SWA link unchanged; EMAIL enabled preserved. Production HTTPS health 200/table/compatible; direct and forged principal 401; anonymous bookings 401; timer registered, verifier absent. Live role list matches existing runtime/application storage, Insights and dedicated ACS-only MI role. No additional test send/verification row, booking/account mutation, configuration/IaC/DNS/role write or git commit. Actual proof retained in active-session deploy-result.json.highImportanceRelease; runbook updated. Gmail Important label is not guaranteed.
+
+## Prior email activation state — 2026-10-20T16:09Z
+Enabled=true. ECS ecs-booking-notifications-8941, verified domain bookingnotification.clouditechsolution.com, noreply sender, dedicated ACS acs-booking-notifications-8941, resource-scoped custom role/MI assignment deployed. Exact single hosted MI email operation/message ID 6bcb353f-3705-40ef-9fc7-fbf6d8811eca accepted and Succeeded in 5737 ms; recipient delivery/inbox not independently confirmed. Clean final API-only remote build deployed; temporary verifier/guard removed; isolated test entity deleted, throttle untouched. 302 tests passed. Required requesterEmail published; production HTTPS health/compatibility pass, direct forged requests 401, auth/link/storage/secrets preserved. Full resource IDs, timestamps, ZIP proofs and recommendations: infra/EMAIL-NOTIFICATIONS.md and active-session email-verification-result.json.
+
+2026-10-20 retry explicitly approved: supported API fix, fresh azure-validate checks, phased resource/DNS/sender/scoped custom-role deployment, API-only remote build, exactly ONE verification email to lloydismael@gmail.com, then conditional activation. Consent includes residual ACS configuration-write privilege at the dedicated ACS only. Prior failed deployment retained as historical evidence. No production booking/staff mutation authorized.
+
+## Current scope — 2026-10-20
+- Recipe: azcli; standalone `infra/email-notifications.bicep`, incremental resource-group deployment. No azure.yaml or azd scaffolding.
+- User approved execution in Primary Subscription `2a77b3d9-39da-4b42-8219-c6fd9b8a6165`, PersonalRG, existing Function `func-booking-prod-8941`; US email data geography, usage charges, retirement dependency and Azure DNS inspection/additive configuration. Sender: `noreply@bookingnotification.clouditechsolution.com`; origin: `https://sellerdevelopmentrf.clouditechsolution.com`.
+- Existing system identity principal: `b6cba273-1a08-4d52-b276-929342469e8d`. Preserve existing Function/SWA auth, storage, credentials, linked backend and other settings. No production booking/account mutations or private-record inspection.
+- Completed stages: dedicated ECS/domain create, additive DNS four-state verification, dedicated ACS/sender/link/scoped custom RBAC, independently verified API-only remote build, disabled-first settings merge, exactly one authorized hosted MI SDK verification, clean final ZIP and test cleanup, enable. Explicit role and single-recipient consent satisfied by current retry approval.
+- Provider registration executed successfully. Official lifecycle guide rechecked: new Email onboarding currently allowed but subject to change; retirement 2028-09-30 remains. Public NS delegation matches existing Azure clouditechsolution.com zone. No existing subdomain records found; parent DMARC absent. No unrelated DNS record replacement authorized.
+
+## Current validation checklist
+All validation checks pass: corrected DOMAIN and SENDER stages, verified API package and actual hosted single-message MI verification; deployment/activation completed.
+- [x] Core validation: mandatory validate-deployment.ps1 OVERALL PASS; CLI/auth, Bicep build, ARM validate and what-if pass. Independent ResourceIdOnly preview confirms exactly 2 creates (ECS and domain), no modify/delete; helper's 3 count includes a non-resource output line.
+- [x] Docker: not applicable (Node source ZIP).
+- [x] Policy: inherited audit default, West Europe deny (not applicable to global), MFA-write/delete reviewed. ARM domain validation passes; no RG-level assignments returned. No policy bypass.
+- [x] API build and all 302 isolated tests pass; no live local API invoked.
+- [x] Static/live RBAC: approved documented actions, existing MI, dedicated ACS-only assignment; actual hosted SDK send Succeeded without broader grants.
+- [x] Section 7 current proof recorded; workflow completed after all real checks; domain and sender helper checks passed. Final clean API deployed and enabled.
+
+## 7. Current email validation proof
+- Retry validation 2026-10-20T15:43Z: exact Microsoft Learn 2025-09-01 ECS/domain/sender/ACS schemas reviewed; live case-insensitive provider metadata confirms all four stable versions supported. Surgical API-version-only fix; no properties or role actions broadened.
+- Mandatory validate-deployment.ps1 corrected domain: CLI/auth/build/ARM validate/what-if OVERALL PASS. ResourceIdOnly independently shows exactly ECS/domain creates, no Modify/Delete; existing resources Ignore. Policy assignment SecurityCenterBuiltIn/audit reviewed, live ARM accepted. Docker not applicable.
+- Fresh canonical `npm run build` and `npm test`: 302 passed, zero failed; VS Code test provider unavailable, Node test runner used. Bicep/notifications editor diagnostics clean.
+- Live REST Function Running/node22, identity unchanged; authsettingsV2 enabled, SWA provider enabled, requireAuthentication true, Return401. CLI convenience wrapper gave null nested properties/incorrect auth resource path; authoritative REST proves expected state.
+- Static RBAC: domain stage none; sender custom role retains only documented CommunicationServices Read/Write and EmailServices/write, no key/delete/RBAC actions; assignment only dedicated ACS, existing MI principal. User explicitly approved residual configuration-write privilege and exactly one lloydismael@gmail.com verification email. SDK permission sufficiency remains live-test gated.
+- 2026-10-20: `npm run build`, `npm test` in api: 302 passed, 0 failed. Editor diagnostics clean for notifications and standalone Bicep.
+- Live ARM inspection: Function Running, node22/Flex, existing SystemAssigned identity. authsettingsV2 enabled, requireAuthentication=true, Return401, SWA provider enabled. No settings changed.
+- `Microsoft.Communication` registered by approved subscription operation. Resource-group/subscription permissions include `*`; policy includes audit default, West Europe restriction, MFA-write/delete enforcement. ARM validation still required; registration alone does not prove deployment eligibility.
+- Domain deploy attempted: `az deployment group create --name email-domain-20261020 --mode Incremental` with approved explicit subscription/group and domain parameters. FAILED `NoRegisteredProviderFound`: ECS API 2025-05-01 not supported by live provider. Deployment operation confirms failure at ECS creation; resource inventory empty for dedicated names. Stable 2025-09-01/2026-03-18 supported; require corrected template and fresh validation before retry. Do not treat prior preflight pass as successful deployment.
+- Historical first-attempt state ONLY: no DNS/settings/API/RBAC writes or sends, effective false, no timer. This is superseded by approved retry evidence below and final current state above.
+- Retry/role/one-email approvals subsequently satisfied. Dedicated-subdomain DMARC policy remains an optional follow-up and was not changed.
+- Retry domain deployment `email-domain-retry-20261020` Succeeded. Exact generated ownership TXT/SPF and both subdomain DKIM CNAMEs added only at previously absent labels. Existing parent DNS records untouched. Authoritative/1.1.1.1 probes passed; initial 8.8.8.8 selector2 NXDOMAIN recorded as propagation, not treated as failure proof. Azure Domain/SPF/DKIM/DKIM2 all Verified/errorCode None. DMARC absent parent/subdomain; policy left unchanged pending explicit policy choice; not a mandatory four-state domain link prerequisite.
+- Fresh sender ARM validate Succeeded, error null; mandatory sender validate-deployment.ps1 OVERALL PASS; full-resource preview exactly 4 creates (custom role, ACS, resource-scoped assignment, noreply), ECS/domain NoChange; no Modify/Delete. Sender `email-sender-20261020` Succeeded. Live scoped MI assignment 81ee39b7-5a41-5f2b-9d4e-a50bef027df3 and role 7e8f0667-c654-58be-9f24-c0101730c573 match exact approved actions. ACS local auth disabled and linked domain correct. Sender PUT unexpectedly reset domain states despite NoChange preview; reinitiated exact verification and all four now Verified again.
+- Source ZIP final 22 entries/53112 bytes/SHA256 C63F98A648387E0FF4328D0851FA150B8C8AB44619B2F4EF5975187FD5B579CD; temporary hosted verifier ZIP 23 entries/54537 bytes/SHA256 5FDCC1808C947C14F40D080886E089BB3AAC29C19698671B95EC244C927F6936. Exact inventory/uncompressed hashes/slash paths verified; generated assets packaged build passed; no settings/tests/node_modules included. Python unavailable; .NET verified ZIP method used.
+- Email-only settings merge disabled; all 15 existing values and slot flags compared privately unchanged. Fixed verification operation 6bcb353f-3705-40ef-9fc7-fbf6d8811eca uses isolated email-verification partition, no fake booking or profile; ETag claim, no retries. Hosted SYSTEM MI SDK send accepted exactly once and provider Succeeded: started 2026-10-20T16:04:00.414Z, accepted 16:04:02.184Z, completed 16:04:06.151Z (5737 ms). Durable exact entity confirms providerId equals operation ID, accepted true. Role sufficient for actual SDK, no 403 or broadening needed. Recipient delivery/inbox NOT independently confirmed. Full public health compatibility passed and form config includes required requesterEmail migration. Verification guard disarmed; final ZIP deploy and cleanup/conditional enable next.
+
+---
+
+# Historical production API route restoration
+
+Historical status: Deployed (not current email activation)
 
 ## 1. Scope and approval
 User approved deployment of the current API to the existing Function App and creation of this checklist on 2026-10-14. Code-only update; no infrastructure provisioning, authentication changes, storage configuration changes, migrations, stored-form overwrite, or frontend deployment.

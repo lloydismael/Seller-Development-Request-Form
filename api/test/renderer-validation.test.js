@@ -175,7 +175,7 @@ test("typing a valid first name never exposes submit before completing the name"
   assert.equal(r.submit.hidden, true); assert.equal(r.submit.disabled, true);
   r.requestorComplete = true;
   r.updateProgress();
-  assert.deepEqual(Array.from(r.visiblePath()), ["name", "division"]);
+    assert.deepEqual(Array.from(r.visiblePath()), ["name", "requesterEmail", "division"]);
   assert.equal(r.submit.hidden, true); assert.equal(r.submit.disabled, true);
 });
 
@@ -209,7 +209,7 @@ test("actual renderer validation accepts optional blanks/zero/historical custom 
   r.answers.date = "2026-10-14"; assert.equal(r.invalidReason("date"), "");
 });
 
-test("requestor name gates Sales Division until valid and hides it again when cleared", () => {
+test("requestor name gates Your Email until valid and hides it again when cleared", () => {
   const r = renderer(config());
   for (const value of [undefined, "", "   ", "<invalid>", "A".repeat(201)]) {
     r.answers.name = value;
@@ -218,7 +218,7 @@ test("requestor name gates Sales Division until valid and hides it again when cl
   r.answers.name = "Test Requestor";
   assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
   r.requestorComplete = true;
-  assert.deepEqual(Array.from(r.visiblePath()), ["name", "division"]);
+    assert.deepEqual(Array.from(r.visiblePath()), ["name", "requesterEmail", "division"]);
   r.answers.name = "";
   assert.deepEqual(Array.from(r.visiblePath()), ["name"]);
 });
@@ -296,7 +296,7 @@ test("active question glow follows focus and exposes the current step", () => {
 
 test("optional requestor does not block configured routing", () => {
   const c = config(); c.questions.name.required = false;
-  assert.deepEqual(Array.from(renderer(c).visiblePath()), ["name", "division"]);
+  assert.deepEqual(Array.from(renderer(c).visiblePath()), ["name", "requesterEmail", "division"]);
 });
 
 test("actual renderer follows scheduling graph rather than editable presentation order", () => {

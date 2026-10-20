@@ -55,7 +55,7 @@ function setup() {
   const get = (id, cookie) => { const req = request("GET", null, cookie); req.params.id = id; return a.handlers.get("myRequest")(req); };
   const submit = async cookie => a.handlers.get("bookings")(request("POST", {
     formVersion:(await a.forms.published()).version,
-    answerValues:{ name:"Requestor", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
+    answerValues:{ name:"Requestor", requesterEmail:"requestor@example.com", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
       t_tech:"Meta Andromeda", date:"2099-12-01", facilitator:defaults.questions.facilitator.choices[0], time:defaults.questions.time.choices[0],
       venue:defaults.questions.venue.choices[0], participants:25, recommendations:"Test" }
   }, cookie));
@@ -119,7 +119,7 @@ test("cookie is persisted only on successful create, including saved audit failu
   await a.store.bookings.put({ ...reserved, status:"Approved" });
   const conflict = await a.submit(); assert.equal(conflict.status, 409); assert.equal(conflict.cookies, undefined);
   await a.store.bookings.remove(created.jsonBody.id);
-  a.store.bookings.put = async () => { throw new Error("private credential"); };
+  a.store.bookings.transact = async () => { throw new Error("private credential"); };
   const failure = await a.submit(); assert.equal(failure.status, 500); assert.equal(failure.cookies, undefined); assert.equal(JSON.stringify(failure).includes("credential"), false);
   const b = setup(); b.store.activity.compareAndSwap = async () => { throw new Error("private"); };
   const auditFailure = await b.submit(); assert.equal(auditFailure.status, 201); assert.equal(auditFailure.jsonBody.auditRecorded, false); assert.ok(auditFailure.cookies);

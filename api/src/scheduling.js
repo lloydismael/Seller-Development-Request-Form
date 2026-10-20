@@ -4,7 +4,7 @@ const GUARD = "schedule-reservation-version";
 
 // A shared ETag in the bookings partition makes conflict checks and writes atomic
 // across API instances, including approvals of different pending requests.
-async function save(next, version, force = false) {
+async function save(next, version, force = false, notifications = []) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const guard = await store.bookings.getWithVersion(GUARD);
     if (!force && isActive(next.status)) {
@@ -15,8 +15,9 @@ async function save(next, version, force = false) {
     try {
       await store.bookings.transact([
         { value:{ id:GUARD, recordType:"schedule-guard", revision:require("crypto").randomUUID() }, version:guard?.version ?? null },
-        { value:next, version }
-      ]);
+        { value:next, version },
+                ...notifications
+              ]);
       return next;
     } catch (e) {
       if (e.statusCode !== 409) throw e;

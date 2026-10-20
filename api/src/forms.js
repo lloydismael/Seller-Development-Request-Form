@@ -4,6 +4,20 @@ const { schema, defaults } = require("./form-assets-loader");
 const STATE_ID = "form-state";
 const fail = (message, statusCode) => Object.assign(new Error(message), { statusCode, expose:true });
 const conflict = () => fail("The form changed. Reload the latest form/draft and retry.", 409);
+function withRequesterEmail(config) {
+  if (Object.values(config.questions).some(q => q.field === "requesterEmail")) return config;
+  const next = JSON.parse(JSON.stringify(config));
+  const entry = Object.entries(next.questions).find(([, q]) => q.field === "requestor");
+  if (!entry || !["text", "textarea"].includes(entry[1].type)) throw fail("Add a required Your Email question mapped to requesterEmail on every form route before enabling notifications.", 503);
+  let id = "requesterEmail";
+  while (next.questions[id]) id += "_new";
+  const [requestorId, requestor] = entry;
+  next.questions[id] = { title:"Your Email", type:"email", required:true, field:"requesterEmail",
+    ...(requestor.next ? { next:requestor.next } : {}), help:"Receive email notifications with updates on your request.", placeholder:"you@example.com" };
+  requestor.next = id;
+  next.order.splice(next.order.indexOf(requestorId) + 1, 0, id);
+  return schema.validate(next);
+}
 async function state() {
   let current = await store.settings.getWithVersion(STATE_ID);
   if (!current) {
@@ -19,9 +33,18 @@ async function state() {
   // Persisted corruption fails closed; do not silently fall back to source defaults.
   try { schema.size(current.value); schema.validate(current.value.draft.config); schema.validate(current.value.published.config); }
   catch { throw fail("Stored form configuration is invalid.", 503); }
-  return current;
-}
-async function snapshot(version, config) {
+  const draftConfig = withRequesterEmail(current.value.draft.config), liveConfig = withRequesterEmail(current.value.published.config);
+    if (draftConfig !== current.value.draft.config || liveConfig !== current.value.published.config) {
+      const revision = randomUUID(), version = randomUUID();
+      const next = schema.size({ ...current.value, draft:{ config:draftConfig, revision }, published:{ config:liveConfig, version } });
+      await snapshot(version, liveConfig);
+      try { await store.settings.compareAndSwap(STATE_ID, next, current.version); }
+      catch (e) { if (e.statusCode !== 409) throw e; }
+      return state();
+    }
+    return current;
+  }
+  async function snapshot(version, config) {
   await store.settings.compareAndSwap("form-version-" + version, schema.size({ id:"form-version-" + version, config, version }), null);
 }
 async function published() { return (await state()).value.published; }
@@ -32,6 +55,7 @@ async function draft() {
 async function saveDraft(input) {
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["config", "revision"].includes(k))) throw fail("Supply {config, revision}.", 400);
   const config = schema.validate(input.config), current = await state();
+  if (!Object.values(config.questions).some(q => q.field === "requesterEmail")) throw fail("Your Email is required and cannot be removed.", 400);
   if (input.revision !== current.value.draft.revision) throw conflict();
   const next = schema.size({ ...current.value, draft:{ config, revision:randomUUID() } });
   await store.settings.compareAndSwap(STATE_ID, next, current.version);

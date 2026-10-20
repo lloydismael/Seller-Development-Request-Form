@@ -59,6 +59,21 @@ for (const backend of ["file", "table"]) test(`${backend} transactions atomicall
   assert.equal((await store.bookings.get("session")).status, "Completed");
 });
 
+for (const backend of ["file", "table"]) test(`${backend} notification queries exclude terminal, future and leased rows before limiting`, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "email-storage-")); directories.push(dir);
+  const { store } = mockStore(backend === "file" ? { STORAGE_TEST_FILE:path.join(dir, "db.json") } : { STORAGE_TABLE_ENDPOINT:"https://example.table.core.windows.net" });
+  const future = new Date(Date.now() + 60000).toISOString();
+  for (const row of [
+    { id:"terminal", state:"sent" }, { id:"ambiguous", state:"ambiguous" }, { id:"skipped", state:"skipped" },
+    { id:"future", state:"retry", nextAttemptAt:future }, { id:"leased", state:"sending", leaseUntil:future },
+    { id:"due", state:"pending" }, { id:"poll", state:"accepted" }
+  ]) await store.bookings.insert({ ...row, recordType:"email-notification" });
+  await store.bookings.insert({ id:"throttle", recordType:"email-throttle" });
+  assert.deepEqual(Array.from(await store.bookings.listNotifications(1), row => row.id), ["due"]);
+  assert.deepEqual(Array.from(await store.bookings.listNotifications(2), row => row.id), ["due", "poll"]);
+  assert.equal((await store.bookings.list()).length, 0);
+});
+
 test("endpoint credentials take precedence over legacy key configuration",async () => {
   const {store,calls} = mockStore({STORAGE_TABLE_ENDPOINT:"https://example.table.core.windows.net/",STORAGE_CONNECTION_STRING:"unused"});
   await store.checkConnection(); assert.equal(store.kind,"table"); assert.equal(calls.length,5); assert.equal(calls[0].credential.constructor.name,"DefaultAzureCredential");
@@ -169,7 +184,7 @@ test("local UI mode is explicit; deployed file backend is rejected",async () => 
   const local = browser("localhost","?storage=local",async()=>{throw new Error("no API");});
   assert.equal(await local.store.mode(),"local");
   const live = await local.store.formConfig(), q = live.config.questions;
-  const input = { formVersion:live.version, answerValues:{ name:"Test", division:q.division.choices[0].label,
+  const input = { formVersion:live.version, answerValues:{ name:"Test", requesterEmail:"requestor@example.com", division:q.division.choices[0].label,
     sd_lg:q.sd_lg.choices[0], category:q.category.choices[0].label, t_tech:q.t_tech.choices[0],
     date:"2026-12-01", facilitator:q.facilitator.choices[0], time:q.time.choices[0], venue:q.venue.choices[0],
     participants:25, recommendations:"Test recommendations" } };

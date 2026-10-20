@@ -118,7 +118,7 @@
     const attrs = `aria-labelledby="title-${id}" aria-describedby="hint-${id} help-${id} error-${id}" ${q.required ? 'aria-required="true"' : ""}`;
     const placeholder = esc(q.placeholder ?? "Type your answer");
     if (["text", "textarea", "email", "number"].includes(q.type)) {
-      const bounds = q.type === "number" ? `min="${q.min ?? (q.field === "participants" ? 1 : -1000000)}" max="${q.max ?? 1000000}" step="${q.field === "participants" ? "1" : "any"}"` : 'maxlength="200"';
+      const bounds = q.type === "number" ? `min="${q.min ?? (q.field === "participants" ? 1 : -1000000)}" max="${q.max ?? 1000000}" step="${q.field === "participants" ? "1" : "any"}"` : `maxlength="${q.type === "email" ? 254 : 200}"`;
       html += q.type === "textarea" ? `<textarea class="text-in" rows="3" maxlength="2000" placeholder="${placeholder}" ${attrs}>${esc(answers[id] ?? "")}</textarea>` : `<input type="${q.type}" class="text-in" ${bounds} placeholder="${placeholder}" autocomplete="${q.type === "email" ? "email" : q.field === "requestor" ? "name" : "off"}" value="${esc(answers[id] ?? "")}" ${attrs}>`;
     } else if (q.type === "date" && id !== "date") {
       html += `<input type="date" class="text-in" value="${esc(answers[id] || "")}" ${attrs}>`;
@@ -203,7 +203,7 @@
     if (q.type === "number" && (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 1000000 || (q.min !== undefined && value < q.min) || (q.max !== undefined && value > q.max) || (q.field === "participants" && (!Number.isSafeInteger(value) || value < 1)))) return "Enter a valid number within the allowed bounds" + (q.field === "participants" ? " (positive whole participants)." : ".");
     if (q.type === "multi" && (!Array.isArray(value) || new Set(value).size !== value.length || value.some(v => !q.choices.map(choiceObj).some(c => c.label === v)) || value.length < (q.min || 0) || value.length > (q.max || q.choices.length))) return "Choose the allowed number of listed options.";
     if (!["number", "multi"].includes(q.type)) {
-      if (typeof value !== "string" || !value.trim() || value.length > (q.type === "textarea" ? 2000 : 200) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f<>]/.test(value)) return "Enter plain text within the allowed length; HTML is not supported.";
+      if (typeof value !== "string" || !value.trim() || value.length > (q.type === "textarea" ? 2000 : q.type === "email" ? 254 : 200) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f<>]/.test(value)) return "Enter plain text within the allowed length; HTML is not supported.";
       if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Enter a valid email address.";
       if (q.type === "date" && !schema.validDate(value)) return "Enter a valid calendar date.";
       if (q.type === "choice" && !q.allowOther && !q.choices.map(choiceObj).some(c => c.label === value.trim())) return "Choose a listed option.";

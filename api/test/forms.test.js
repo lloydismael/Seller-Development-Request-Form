@@ -7,7 +7,7 @@ const defaults = require("../../app/form-config");
 const { harness } = require("./api-harness");
 const clone = value => JSON.parse(JSON.stringify(value));
 const config = () => schema.validate(defaults);
-const values = () => ({ name:"Test Requestor", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
+const values = () => ({ name:"Test Requestor", requesterEmail:"requestor@example.com", division:"LG Division", sd_lg:defaults.questions.sd_lg.choices[0], category:defaults.questions.category.choices[0].label,
   t_tech:"Meta Andromeda", date:"2026-12-01", facilitator:defaults.questions.facilitator.choices[0], time:defaults.questions.time.choices[0],
   venue:defaults.questions.venue.choices[0], participants:25, recommendations:"Test recommendations" });
 

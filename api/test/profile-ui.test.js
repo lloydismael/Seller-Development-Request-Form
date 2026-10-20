@@ -15,7 +15,7 @@ function profile(role = 'facilitator', provider = 'local') {
   context.profile(view,context.ctx,context.account);
   return {context,view,pf,nodes,calls};
 }
-test('profile has one page heading, role/assignment, clear sign-in and contact-only email guidance',()=>{
+test('profile has one page heading, role/assignment, clear sign-in and notification email guidance',()=>{
   const h=profile();
   assert.doesNotMatch(h.view.innerHTML,/<h2>My profile/);
   assert.match(h.view.innerHTML,/<h3>Contact details/);
@@ -44,7 +44,7 @@ test('facilitator contacts are separate from assignment/security saves and email
   const source = fs.readFileSync(require.resolve('../../app/admin/facilitators.js'),'utf8');
   assert.match(source,/contact \? \{ profile \}/);
   assert.match(source,/Save contact details/);
-  assert.match(source,/Email is for contact only/);
+  assert.match(source,/Email is used for contact and request notifications when enabled/);
   assert.match(source,/a\.profile\?\.email/);
   assert.match(source,/if \(!contact && !creating && !changingStatus && !confirm/);
 });

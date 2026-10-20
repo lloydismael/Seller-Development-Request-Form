@@ -107,7 +107,7 @@ async function decide(id, who, action) {
   if (row.value.status !== "Pending") throw fail(409, "Only Pending requests can be accepted or declined.");
   const next = { ...row.value, status:action === "accept" ? "Approved" : "Rejected", updatedAt:new Date().toISOString(), updatedBy:who.user,
     decidedAt:new Date().toISOString(), decidedBy:who.id };
-  await require("./scheduling").save(next, row.version);
+  await require("./scheduling").save(next, row.version, false, await require("./notifications").operations(row.value, next, who));
   return safeSession(next);
 }
 async function complete(id, who, activateLegacy = false) {

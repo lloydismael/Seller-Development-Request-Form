@@ -159,6 +159,21 @@ function collection(name) {
           }
           return out;
         },
+        async listNotifications(limit = 100) {
+          if (name !== "bookings" || !Number.isInteger(limit) || limit < 1 || limit > 1000) throw new TypeError("Invalid notification query.");
+          const now = Date.now();
+                    const due = row => row.recordType === "email-notification" && ["pending", "retry", "sending", "accepted"].includes(row.state) &&
+                      (!row.nextAttemptAt || Date.parse(row.nextAttemptAt) <= now) && (!row.leaseUntil || Date.parse(row.leaseUntil) <= now);
+                    if (kind === "file") return ((await readDb())[name] || []).filter(due).slice(0, limit);
+                    const out = [];
+                    for await (const e of (await table(name)).listEntities({ queryOptions:{ filter:`PartitionKey eq '${PK}' and recordType eq 'email-notification'` } })) {
+                      const row = JSON.parse(e.data);
+                      if (!due(row)) continue;
+                      out.push(row);
+                      if (out.length >= limit) break;
+                    }
+          return out;
+        },
         async listRelated(sessionId, recordType = "csat-attendee") {
           if (name !== "bookings" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId) || !["csat-attendee", "csat-response"].includes(recordType)) throw new TypeError("Invalid session query.");
           if (kind === "file") return ((await readDb())[name] || []).filter(x => x.csatSession === sessionId && x.recordType === recordType);

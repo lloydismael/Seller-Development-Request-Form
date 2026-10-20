@@ -223,7 +223,7 @@
             <label>Display name<input name="displayName" value="${esc(p.displayName)}" autocomplete="name" maxlength="100" required></label>
             <label>Email<input name="email" type="email" value="${esc(p.email)}" autocomplete="email" maxlength="254"></label>
             <label>Phone<input name="phone" type="tel" value="${esc(p.phone)}" autocomplete="tel" maxlength="32"></label>
-            <p class="muted small">Email is for contact only, not sign-in or password recovery.</p><p id="profileFeedback" role="status" aria-live="polite" hidden></p><div class="settings-actions"><button class="btn primary" type="submit" id="saveProfile" disabled>Save changes</button><button class="btn ghost" type="button" id="cancelProfile" disabled>Cancel changes</button></div>
+            <p class="muted small">Email is used for contact and request notifications when enabled, not sign-in or password recovery.</p><p id="profileFeedback" role="status" aria-live="polite" hidden></p><div class="settings-actions"><button class="btn primary" type="submit" id="saveProfile" disabled>Save changes</button><button class="btn ghost" type="button" id="cancelProfile" disabled>Cancel changes</button></div>
           </form>
         </section>
         <section class="panel"><h3>Security</h3>${local ? `<p class="muted" id="passwordPolicy">Use 12–128 characters. Changing your password signs out all sessions.</p>
@@ -292,7 +292,7 @@
     draft = { config:schema.validate(result.config), revision:result.revision, version:result.version };
     saved = JSON.stringify(draft.config); selected = draft.config.order.includes(selected) ? selected : draft.config.start;
   }
-  function protectedQuestion(q) { return schema.REQUIRED.includes(q.field); }
+  function protectedQuestion(q) { return schema.REQUIRED.includes(q.field) || q.field === "requesterEmail"; }
   function uniqueId(prefix, taken) {
     let i = 1; while (taken.includes(prefix + i)) i++;
     return prefix + i;
@@ -348,7 +348,7 @@
   function builder(view, ctx) {
     const cfg = draft.config;
     if (!cfg.questions[selected]) selected = cfg.start;
-    const q = cfg.questions[selected], essential = protectedQuestion(q), fixedType = ["date", "facilitator", "time"].includes(selected) || q.field === "participants";
+    const q = cfg.questions[selected], essential = protectedQuestion(q), fixedType = ["date", "facilitator", "time"].includes(selected) || ["participants", "requesterEmail"].includes(q.field);
     const openPanels = new Set([...view.querySelectorAll("details[open][data-builder-panel]")].map(el => el.dataset.builderPanel));
     view.innerHTML = `<div class="settings-heading builder-heading"><div><p class="muted">Save a draft, preview it, then publish to make it live.</p></div>
       <div class="settings-actions"><button type="button" class="btn" id="reloadDraft">Reload draft</button><button type="button" class="btn" id="saveDraft">Save draft</button><button type="button" class="btn" id="previewDraft">Preview</button><button type="button" class="btn primary" id="publishForm">Publish</button></div></div>

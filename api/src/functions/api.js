@@ -4,6 +4,7 @@ const store = require("../store");
 const anonymous = require("../anonymous");
 const { findConflicts, conflictMessage, reservesSlot, inBlock } = require("../rules");
 const scheduling = require("../scheduling");
+const notifications = require("../notifications");
 const { isAdmin, isManagement, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
 const forms = require("../forms");
 const audit = require("../audit");
@@ -246,7 +247,7 @@ http("bookings", {
     Object.assign(rec, { id: randomUUID(), status: "Pending", adminNotes: "", createdAt: new Date().toISOString(), ownerHash:browser.ownerHash });
     schema.size(rec);
     csat.initializeSharing(rec);
-    await store.bookings.put(rec);
+    await store.bookings.transact([{ value:rec, version:null }, ...await notifications.operations(null, rec, null)]);
     const result = await audited(req, 201, { ...anonymous.withoutOwner(rec), historyAvailable:browser.recognized }, "booking.create", rec.id, "Booking submitted", "anonymous", { kind:"self-reported", name:rec.requestor });
     return { ...result, cookies:[anonymous.cookie(req, browser.token)] };
   }
@@ -304,7 +305,7 @@ http("bookingItem", {
     next.updatedBy = actor || "admin";
     schema.size(next);
     csat.transition(existing, next, who);
-    await scheduling.save(next, current.version, p.force === true);
+    await scheduling.save(next, current.version, p.force === true, await notifications.operations(existing, next, who));
     return audited(req, 200, anonymous.withoutOwner(next), "booking.update", id, "Updated fields: " + EDITABLE.filter(k => p[k] !== undefined).join(", "), who);
   }
 });

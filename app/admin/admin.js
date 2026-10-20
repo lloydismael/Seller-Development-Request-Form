@@ -131,6 +131,7 @@
     blocks: ["Blocked dates", "Keep availability accurate with leave, holidays and other commitments."],
     csat: ["CSAT / Training", "Complete assigned training, share CSAT links and QR codes, and review responses."],
     facilitators: ["Facilitator accounts", "Create and manage limited-access facilitator logins."],
+    supervisors: ["Supervisor accounts", "Create and manage Supervisor logins for training operations."],
     profile: ["My profile", "Your account details and security, in one place."],
     builder: ["Form builder", "Shape the booking experience with safe drafts and publishing."],
     activity: ["Activity log", "Follow changes across bookings, accounts and your booking form."],
@@ -196,6 +197,8 @@
   document.querySelectorAll(".tab").forEach(b => (b.onclick = () => {
     if (b.dataset.tab === st.tab) { closeNavigation(true); return; }
     if (!window.SettingsUI.canLeave() || window.FacilitatorUI?.canLeave() === false) return;
+    if (identity?.role === "facilitator" && !["csat", "profile"].includes(b.dataset.tab)) return;
+    if (identity?.role === "supervisor" && ["supervisors", "builder", "activity", "settings"].includes(b.dataset.tab)) return;
     st.tab = b.dataset.tab; render(); closeNavigation();
     $("#view").focus();
   }));
@@ -240,12 +243,15 @@
   });
   function render() {
     if (identity?.role === "facilitator" && !["csat", "profile"].includes(st.tab)) st.tab = "csat";
+    if (identity?.role === "supervisor" && ["supervisors", "builder", "activity", "settings"].includes(st.tab)) st.tab = "dashboard";
     window.CsatUI?.deactivate();
     window.ReportingUI?.deactivate();
     const [pageTitle, description] = pages[st.tab];
     $("#pageTitle").textContent = pageTitle;
     $("#pageDescription").textContent = description;
     document.querySelectorAll(".tab").forEach(b => {
+      b.hidden = identity?.role === "facilitator" ? !["csat", "profile"].includes(b.dataset.tab) :
+        identity?.role === "supervisor" ? ["supervisors", "builder", "activity", "settings"].includes(b.dataset.tab) : false;
       b.classList.toggle("active", b.dataset.tab === st.tab);
       if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
@@ -254,6 +260,11 @@
       window.SettingsUI.deactivate();
       window.ReportingUI.render(v, { S, identity, mode, bookings, blocks, toast, openBooking,
         updateData: (nextBookings, nextBlocks) => { bookings = nextBookings; blocks = nextBlocks; } });
+      return;
+    }
+    if (st.tab === "supervisors") {
+      window.SettingsUI.deactivate();
+      window.FacilitatorUI.render(v, { S, identity, labels:FACS, accountType:"supervisor" });
       return;
     }
     if (["csat", "facilitators"].includes(st.tab)) {
@@ -595,7 +606,7 @@
       ${b.formVersion ? `<p class="muted small">Form version: ${esc(b.formVersion)}</p>` : ""}
       <table class="kv">${answerRows.map(([k, v, key]) => `<tr><th>${esc(k)}${key ? `<small class="answer-id">${esc(key)}</small>` : ""}</th><td>${esc(answerText(v))}</td></tr>`).join("")}</table>
       <div class="modal-actions">
-        <button class="btn danger" id="eDelete">Delete</button><span class="spacer"></span>
+        ${identity?.role === "admin" ? '<button class="btn danger" id="eDelete">Delete</button>' : ""}<span class="spacer"></span>
         <button class="btn" id="eCancel">Close</button><button class="btn primary" id="eSave">Save changes</button>
       </div>`);
     const draft = () => ({ status: $("#eStatus").value, trainingDate: $("#eDate").value, facilitator: $("#eFac").value,
@@ -615,7 +626,7 @@
     };
     $("#eCancel").onclick = closeModal;
     $("#eSave").onclick = async () => { if (await saveBooking(b.id, draft())) closeModal(); };
-    $("#eDelete").onclick = async () => {
+    if (identity?.role === "admin") $("#eDelete").onclick = async () => {
       if (!confirm("Permanently delete this booking?")) return;
       try { const r = await S.remove(b.id); closeModal(); await reload(); toast("Booking deleted"); auditWarning(r); } catch (e) { alert(e.message); }
     };

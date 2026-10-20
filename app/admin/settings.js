@@ -217,7 +217,7 @@
     const p = account.profile || {}, local = account.provider === "local";
     profileDirty = false;
     view.innerHTML = `<div class="settings-grid">
-        <section class="panel"><h3>Contact details</h3><dl class="account-metadata"><dt>Role</dt><dd>${account.role === "facilitator" ? "Facilitator" : "Administrator"}</dd>${account.facilitatorLabel ? `<dt>Assignment</dt><dd>${esc(account.facilitatorLabel)}</dd>` : ""}</dl><p class="muted small">Sign-in method: ${local ? "Username and password" : "External identity provider"}</p>
+        <section class="panel"><h3>Contact details</h3><dl class="account-metadata"><dt>Role</dt><dd>${account.role === "facilitator" ? "Facilitator" : account.role === "supervisor" ? "Supervisor" : "Administrator"}</dd>${account.facilitatorLabel ? `<dt>Assignment</dt><dd>${esc(account.facilitatorLabel)}</dd>` : ""}</dl><p class="muted small">Sign-in method: ${local ? "Username and password" : "External identity provider"}</p>
           <form id="profileForm" class="settings-form">
             <label>Username<input name="username" value="${esc(account.user)}" autocomplete="username" readonly></label>
             <label>Display name<input name="displayName" value="${esc(p.displayName)}" autocomplete="name" maxlength="100" required></label>

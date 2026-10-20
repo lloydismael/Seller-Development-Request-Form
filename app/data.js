@@ -71,7 +71,7 @@
     }
     return { supported:window.BookingApiContract?.compatible(backendHealth) === true, release:backendHealth.release || null };
   }
-  const newFeature = url => url.startsWith("/api/training-sessions") || url.startsWith("/api/manage/facilitators");
+  const newFeature = url => url.startsWith("/api/training-sessions") || url.startsWith("/api/manage/facilitators") || url.startsWith("/api/manage/supervisors");
   function mode() {
     if (localOnly) return Promise.resolve("local");
     return modeP || (modeP = fetch("/api/health", { cache:"no-store", signal:AbortSignal.timeout(10000) })
@@ -94,6 +94,7 @@
   async function api(method, url, body) {
     if (backendHealth?.dataset === "shared-production" && !["GET", "HEAD"].includes(method) && !["/api/auth/login", "/api/auth/logout"].includes(url) && !window.confirm("LOCAL CODE / LIVE DATA: this action writes to production. Continue?")) throw fail(400, "Production write cancelled.");
     if (newFeature(url) && !(await compatibility()).supported) throw fail(503, "Backend update required. The linked API does not support CSAT and facilitator accounts yet.", { code:"BACKEND_UPDATE_REQUIRED" });
+    if (url.startsWith("/api/manage/supervisors") && !backendHealth?.capabilities?.includes("supervisor-accounts")) throw fail(503, "Backend update required. Supervisor accounts are not supported by this API yet.", { code:"BACKEND_UPDATE_REQUIRED" });
     if (!["GET", "HEAD"].includes(method)) writable();
     const r = await fetch(url, {
       method, credentials: "same-origin", mode:"same-origin", cache:"no-store",
@@ -225,6 +226,8 @@
     async invitation(id, attendeeId, action) { return (await isApi()) ? api("POST", `/api/training-sessions/${encodeURIComponent(id)}/attendees/${encodeURIComponent(attendeeId)}/invitation`, { action }) : unavailable(); },
     async facilitators() { return (await isApi()) ? api("GET", "/api/manage/facilitators") : unavailable(); },
     async saveFacilitator(input, id) { return (await isApi()) ? api(id ? "PUT" : "POST", `/api/manage/facilitators${id ? "/" + encodeURIComponent(id) : ""}`, input) : unavailable(); },
+    async supervisors() { return (await isApi()) ? api("GET", "/api/manage/supervisors") : unavailable(); },
+    async saveSupervisor(input, id) { return (await isApi()) ? api(id ? "PUT" : "POST", `/api/manage/supervisors${id ? "/" + encodeURIComponent(id) : ""}`, input) : unavailable(); },
     async profile() { return (await isApi()) ? api("GET", "/api/auth/profile") : unavailable(); },
     async updateProfile(profile) { writable(); return (await isApi()) ? api("PUT", "/api/auth/profile", profile) : unavailable(); },
     async changePassword(currentPassword, newPassword, confirmPassword) {

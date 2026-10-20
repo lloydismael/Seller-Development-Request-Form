@@ -96,7 +96,7 @@ async function session(id, who) {
 }
 function transition(existing, next, who, activateLegacy = false) {
   if (eligible(next) && next.status === "Completed" && (!existing.csatActivatedAt || existing.status !== "Completed")) {
-    if (existing.status !== "Approved" && !(activateLegacy && who.role === "admin" && existing.status === "Completed")) throw fail(400, "Approve Phone Videography before completing it.");
+    if (existing.status !== "Approved" && !(activateLegacy && accounts.isManagement(who) && existing.status === "Completed")) throw fail(400, "Approve Phone Videography before completing it.");
     if (!existing.csatActivatedAt) { next.csatActivatedAt = new Date().toISOString(); next.csatCompletedBy = who.id; }
   }
   return next;

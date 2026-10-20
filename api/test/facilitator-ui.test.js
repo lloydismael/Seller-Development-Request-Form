@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../../app/admin/facilitators.js'), 'utf8');
-function harness(identity = { role:'admin' }) {
+function harness(identity = { role:'admin' }, accountType = 'facilitator') {
   const nodes = new Map(), listeners = new Map(), calls = [];
   function node() {
     return { innerHTML:'', textContent:'', hidden:false, disabled:false, isConnected:true, dataset:{}, value:'',
@@ -11,10 +11,10 @@ function harness(identity = { role:'admin' }) {
       querySelectorAll:() => [], addEventListener() {}, append() {}, close() {}, remove() { this.isConnected = false; }, showModal() {}, reportValidity:() => true };
   }
   const view = node();
-  const S = { facilitators:async () => { calls.push('list'); return [{ id:'one', user:'trainer', facilitatorLabel:'Alice', disabled:false }]; }, activity:async () => ({items:[],hasMore:false}) };
+  const S = { facilitators:async () => { calls.push('list'); return [{ id:'one', user:'trainer', facilitatorLabel:'Alice', disabled:false }]; }, supervisors:async () => { calls.push('supervisors'); return [{id:'sup',user:'manager',role:'supervisor',profile:{displayName:'Manager'}}]; }, activity:async () => { calls.push('activity'); return {items:[],hasMore:false}; } };
   const context = { window:{ addEventListener:(name, fn) => listeners.set(name, fn), removeEventListener:name => listeners.delete(name) }, crypto:require('node:crypto').webcrypto, Uint8Array, Date, confirm:() => false, document:{ createElement:() => node() }, FormData:class { get() { return ''; } }, setTimeout };
   vm.runInNewContext(source, context);
-  return { ui:context.window.FacilitatorUI, view, nodes, calls, listeners, render:() => context.window.FacilitatorUI.render(view,{S,identity,labels:['Alice','Bob']}) };
+  return { ui:context.window.FacilitatorUI, view, nodes, calls, listeners, render:() => context.window.FacilitatorUI.render(view,{S,identity,labels:['Alice','Bob'],accountType}) };
 }
 test('directory tools filter usernames, labels, status and reserve disabled assignments', () => {
   const { tools } = harness().ui;
@@ -66,6 +66,29 @@ test('facilitators cannot load the administrator directory', async () => {
   assert.match(h.view.innerHTML,/Administrator access required/);
   h.ui.deactivate();
 });
+test('admin Supervisor directory has no facilitator assignment requirement', async () => {
+  const h = harness({role:'admin'}, 'supervisor'); await h.render();
+  assert.deepEqual(h.calls, ['supervisors']);
+  assert.match(h.view.innerHTML, /Only administrators can manage/);
+  assert.doesNotMatch(h.view.innerHTML, /Without accounts/);
+  h.nodes.get('#createAccount').onclick({currentTarget:h.nodes.get('#createAccount')});
+  const drawer = h.nodes.get('#accountForm');
+  assert.ok(drawer);
+  h.ui.deactivate();
+});
+
+test('Supervisor can manage facilitators without reading account activity', async () => {
+  const h = harness({role:'supervisor'}); await h.render();
+  assert.deepEqual(h.calls, ['list']);
+  h.nodes.get('#accountRows').onclick({target:{closest:() => ({dataset:{edit:'one'}})}});
+  assert.deepEqual(h.calls, ['list']);
+  h.ui.deactivate();
+  const denied = harness({role:'supervisor'}, 'supervisor'); await denied.render();
+  assert.deepEqual(denied.calls, []);
+  assert.match(denied.view.innerHTML, /Administrator access required/);
+  denied.ui.deactivate();
+});
+
 test('account module is loaded before training and admin navigation guards drafts', () => {
   const html = fs.readFileSync(require.resolve('../../app/admin/index.html'),'utf8');
   const admin = fs.readFileSync(require.resolve('../../app/admin/admin.js'),'utf8');

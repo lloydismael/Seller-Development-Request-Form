@@ -181,6 +181,21 @@ bookings. Reserved hours sum Approved and Completed time slots, not unique capac
 CSAT loads on demand for eligible Phone Videography sessions; local demo mode has no
 CSAT data. Accounts, activity and form settings stay in their dedicated menus.
 
+## Supervisor accounts
+
+Administrators create Supervisor logins under **Admin → Supervisor accounts** using
+a unique username and a 12–128 character password. No preset Supervisor credentials
+are created. Administrators can update contacts, reset passwords and disable or
+reactivate these accounts; security changes invalidate existing sessions.
+
+Supervisors can view all bookings, schedules and reporting, edit and approve/reject/
+complete bookings, explicitly override scheduling conflicts, manage blocked dates,
+manage all facilitator accounts and training feedback/CSAT links. Supervisor accounts
+have no facilitator assignment. They cannot delete bookings, manage other Supervisor
+accounts, publish forms, change shared settings or view activity logs. Both the menu
+and API enforce these boundaries. Account management requires the authenticated API;
+browser-only demo mode cannot create persistent logins.
+
 ## Phone Videography CSAT and facilitator access
 
 **Admin → Facilitator accounts** creates local username/password accounts mapped

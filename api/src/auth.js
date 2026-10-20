@@ -62,6 +62,7 @@ async function getIdentity(req) {
 }
 async function adminUser(req) { const who = await getIdentity(req); return who?.role === "admin" ? who.user : null; }
 const isAdmin = async req => (await getIdentity(req))?.role === "admin";
+const isManagement = async req => accounts.isManagement(await getIdentity(req));
 const getProfile = async req => getIdentity(req);
 const updateProfile = async (req, patch) => accounts.updateProfile(await getIdentity(req), patch);
 const changePassword = async (req, input) => accounts.changePassword(await getIdentity(req), input);
@@ -74,4 +75,4 @@ function isHttps(req) {
 const sessionCookie = (req, value, maxAge) =>
   ({ name: COOKIE, value, maxAge, path: "/", httpOnly: true, sameSite: "Strict", secure: isHttps(req) });
 
-module.exports = { checkCredentials, authenticateIdentity, issueToken, adminUser, isAdmin, getIdentity, getProfile, updateProfile, changePassword, sessionCookie, TTL };
+module.exports = { checkCredentials, authenticateIdentity, issueToken, adminUser, isAdmin, isManagement, getIdentity, getProfile, updateProfile, changePassword, sessionCookie, TTL };

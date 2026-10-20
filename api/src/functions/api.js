@@ -4,7 +4,7 @@ const store = require("../store");
 const anonymous = require("../anonymous");
 const { findConflicts, conflictMessage, reservesSlot, inBlock } = require("../rules");
 const scheduling = require("../scheduling");
-const { isAdmin, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
+const { isAdmin, isManagement, authenticateIdentity, getIdentity, getProfile, updateProfile, changePassword, issueToken, sessionCookie, TTL } = require("../auth");
 const forms = require("../forms");
 const audit = require("../audit");
 const csat = require("../csat");
@@ -68,14 +68,21 @@ function http(name, definition) {
       if ((name === "myRequests" || name === "myRequest" || (name === "bookings" && req.method === "POST")) && !sameOrigin(req, false))
         return json(403, { error:"Request origin is not allowed." });
       const csatPrivate = ["trainingSessions", "trainingSession", "trainingComplete", "trainingDecision", "trainingSharing", "trainingAttendees", "trainingInvitation"].includes(name);
-      const accountPrivate = name === "facilitatorAccounts" || name === "facilitatorAccount";
+      const facilitatorPrivate = name === "facilitatorAccounts" || name === "facilitatorAccount";
+      const supervisorPrivate = name === "supervisorAccounts" || name === "supervisorAccount";
+      const accountPrivate = facilitatorPrivate || supervisorPrivate;
       const csatPublic = name === "csatSurvey" || name === "csatSubmit";
-      if (csatPrivate && !await getIdentity(req)) return DENIED;
-      if (accountPrivate && !await isAdmin(req)) return DENIED;
+      if (csatPrivate) {
+        const who = await getIdentity(req);
+        if (!accounts.isManagement(who) && who?.role !== "facilitator") return DENIED;
+      }
+      if (facilitatorPrivate && !await isManagement(req)) return DENIED;
+      if (supervisorPrivate && !await isAdmin(req)) return DENIED;
       if (!["GET", "HEAD"].includes(req?.method) && (csatPrivate || accountPrivate || csatPublic) && !sameOrigin(req, !csatPublic)) return json(403, { error:"Request origin is not allowed." });
       const privateRoute = privateRoutes.has(name) || (name === "bookings" && req.method === "GET");
       const selfService = name === "authProfile" || name === "authPassword";
-      if (privateRoute && !(selfService ? await getIdentity(req) : await isAdmin(req))) return DENIED;
+      const managementRoute = name === "blocks" || name === "blockItem" || (name === "bookings" && req.method === "GET") || (name === "bookingItem" && req.method === "PUT");
+      if (privateRoute && !(selfService ? await getIdentity(req) : managementRoute ? await isManagement(req) : await isAdmin(req))) return DENIED;
       if (!["GET", "HEAD"].includes(req?.method) && (privateRoute || name === "authLogin" || name === "authLogout") && !sameOrigin(req))
         return json(403, { error:"Admin request origin is not allowed or X-Admin-Request: 1 is missing. Open the admin page on an approved application domain and retry." });
       return await handler(req, context);
@@ -127,6 +134,30 @@ http("facilitatorAccount", {
     const contactOnly = Object.hasOwn(input, "profile") && Object.keys(input).every(k => k === "profile");
     const summary = "Facilitator account updated" + (changes.length ? "; " + changes.join("; ") : "") + (contactOnly ? "" : "; sessions invalidated");
     return audited(req, 200, value, "facilitator.update", value.id, summary, who);
+  }
+});
+http("supervisorAccounts", {
+  methods:["GET", "POST"], authLevel:"anonymous", route:"manage/supervisors",
+  handler:async req => {
+    const who = await getIdentity(req), input = req.method === "GET" ? null : await body(req);
+    if (req.method === "POST" && !input) return json(400, { error:"Account fields required." });
+    const value = await accounts.manageSupervisors(who, input);
+    return req.method === "GET" ? json(200, value) : audited(req, 201, value, "supervisor.create", value.id, "Supervisor account created", who);
+  }
+});
+http("supervisorAccount", {
+  methods:["PUT"], authLevel:"anonymous", route:"manage/supervisors/{id}",
+  handler:async req => {
+    const who = await getIdentity(req), input = await body(req);
+    if (!input) return json(400, { error:"Account fields required." });
+    const value = await accounts.manageSupervisors(who, input, req.params.id);
+    const changes = [];
+    if (Object.hasOwn(input, "password")) changes.push("password reset");
+    if (Object.hasOwn(input, "disabled")) changes.push(input.disabled ? "account disabled" : "account enabled");
+    if (Object.hasOwn(input, "profile")) changes.push("profile updated");
+    const contactOnly = Object.hasOwn(input, "profile") && Object.keys(input).every(k => k === "profile");
+    const summary = "Supervisor account updated" + (changes.length ? "; " + changes.join("; ") : "") + (contactOnly ? "" : "; sessions invalidated");
+    return audited(req, 200, value, "supervisor.update", value.id, summary, who);
   }
 });
 http("trainingSessions", { methods:["GET"], authLevel:"anonymous", route:"training-sessions", handler:async req => json(200, await csat.list(await getIdentity(req))) });
@@ -192,7 +223,7 @@ http("health", {
 http("bookings", {
   methods: ["GET", "POST"], authLevel: "anonymous", route: "bookings",
   handler: async (req) => {
-    if (req.method === "GET") return await isAdmin(req) ? json(200, (await store.bookings.list()).map(anonymous.withoutOwner)) : DENIED;
+    if (req.method === "GET") return await isManagement(req) ? json(200, (await store.bookings.list()).map(anonymous.withoutOwner)) : DENIED;
 
     const browser = anonymous.identity(req);
     const b = await body(req);
@@ -245,11 +276,11 @@ http("myRequest", {
   }
 });
 
-// Admin: update / delete a booking
+// Management: update a booking. Deletion remains administrator-only.
 http("bookingItem", {
   methods: ["PUT", "DELETE"], authLevel: "anonymous", route: "bookings/{id}",
   handler: async (req) => {
-    if (!await isAdmin(req)) return DENIED;
+    if (!(req.method === "DELETE" ? await isAdmin(req) : await isManagement(req))) return DENIED;
     const id = req.params.id;
     const current = await store.bookings.getWithVersion(id);
     const existing = current?.value;
@@ -293,11 +324,11 @@ http("availability", {
   }
 });
 
-// Admin: blocked dates (leave / unavailability)
+// Management: blocked dates (leave / unavailability)
 http("blocks", {
   methods: ["GET", "POST"], authLevel: "anonymous", route: "blocks",
   handler: async (req) => {
-    if (!await isAdmin(req)) return DENIED;
+    if (!await isManagement(req)) return DENIED;
     if (req.method === "GET") return json(200, await store.blocks.list());
     const b = await body(req);
     if (!b) return json(400, { error: "Invalid JSON body." });
@@ -315,7 +346,7 @@ http("blocks", {
 http("blockItem", {
   methods: ["DELETE"], authLevel: "anonymous", route: "blocks/{id}",
   handler: async (req) => {
-    if (!await isAdmin(req)) return DENIED;
+    if (!await isManagement(req)) return DENIED;
     const actor = await getIdentity(req);
     await store.blocks.remove(req.params.id);
     return audited(req, 200, { ok:true }, "block.delete", req.params.id, "Availability block deleted", actor);

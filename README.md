@@ -44,6 +44,12 @@ also notifies the assigned facilitator. Facilitator self-approval does not gener
 second approval email to themselves. Missing account emails are recorded as skipped; usernames
 are not treated as email addresses.
 
+For localhost connected to live Azure storage, set `EMAIL_NOTIFICATIONS_ENABLED=true`
+to create notifications and `AzureWebJobs.emailNotifications.Disabled=true` to disable
+the local timer. Restart the local API after changing its settings. The Azure worker
+then delivers the shared outbox; deploying Azure settings does not configure localhost.
+Keep ordinary isolated development notification creation disabled.
+
 All notification emails request high importance using `Importance`, `X-Priority` and
 `X-MSMail-Priority` headers. Mail clients decide whether to display a priority indicator;
 these headers cannot guarantee Gmail's Important label or change previously delivered mail.

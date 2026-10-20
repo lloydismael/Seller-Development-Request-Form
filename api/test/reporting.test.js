@@ -64,7 +64,7 @@ function harness(store = {}) {
 }
 test('workspace renders accessible reporting navigation, charts, exact value tables and export actions', () => {
   const h = harness();
-  for (const text of ['Report filters','Booking volume over time','Training categories','Sales divisions','Facilitator workload','Booking detail','Training feedback / CSAT']) assert.ok(h.view.innerHTML.includes(text));
+  for (const text of ['Choose your report','Bookings over time','Training categories','Sales divisions','Facilitator workload','Booking records','Training feedback / CSAT']) assert.ok(h.view.innerHTML.includes(text));
   assert.match(h.view.innerHTML, /role="status" id="reportCount"/);
   assert.match(h.view.innerHTML, /role="img" aria-label=/);
   assert.match(h.view.innerHTML, /View all values/);
@@ -72,6 +72,18 @@ test('workspace renders accessible reporting navigation, charts, exact value tab
   const html = fs.readFileSync(require.resolve('../../app/admin/index.html'), 'utf8');
   assert.match(html, /data-tab="reporting"[\s\S]*?aria-hidden="true"/);
 });
+test('redesigned report groups secondary charts and preserves full print coverage', () => {
+  const h = harness();
+  for (const id of ['reportOverview', 'reportDemand', 'reportFeedback', 'reportDetails']) {
+    assert.ok(h.view.innerHTML.includes(`href="#${id}"`));
+    assert.ok(h.view.innerHTML.includes(`id="${id}"`));
+  }
+  assert.match(h.view.innerHTML, /<details class="report-breakdowns"><summary>Explore categories/);
+  assert.match(h.view.innerHTML, /class="report-area"/);
+  assert.match(h.view.innerHTML, /aria-label="Report highlights"/);
+  assert.match(source, /querySelectorAll\("\.report-data, \.report-breakdowns"\)/);
+});
+
 test('filter application rejects reversed dates and produces the matching report', () => {
   const h = harness(); const form = h.nodes.get('#reportFilters');
   form.onsubmit({preventDefault(){},currentTarget:{values:{from:'2026-04-01',to:'2026-01-01'}}});

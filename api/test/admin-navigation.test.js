@@ -13,7 +13,7 @@ test('desktop menu stays hidden and account actions use equal responsive dimensi
 });
 
 test('training and facilitator tabs have decorative, theme-aware icons', () => {
-  for (const tab of ['csat', 'facilitators']) {
+  for (const tab of ['reporting', 'csat', 'facilitators']) {
     const button = html.match(new RegExp(`<button class="tab" data-tab="${tab}">([\\s\\S]*?)</button>`));
     assert.ok(button, `${tab} navigation button exists`);
     assert.match(button[1], /<svg class="tab-icon"[^>]*viewBox="0 0 24 24"/);
@@ -40,7 +40,7 @@ function navigation() {
   const listeners = {};
   let allowed = true, leaveCalls = 0, renders = 0;
   const context = { document:{ querySelectorAll:() => tabs, addEventListener:(type, handler) => { listeners[type] = handler; } },
-    $:selector => nodes[selector], st:{ tab:'dashboard' }, identity:{ role:'admin' }, FACS:[], mode:'local', S:{}, Q:{}, sourceConfig:{}, bookings:[], blocks:[], bookingsLoadedAt:null, openBooking() {}, toast() {}, applyConfig() {}, accessibleActions() {},
+    $:selector => nodes[selector], st:{ tab:'dashboard' }, identity:{ role:'admin' }, FACS:[], mode:'local', S:{}, Q:{}, sourceConfig:{}, bookings:[], blocks:[], openBooking() {}, toast() {}, applyConfig() {}, accessibleActions() {},
     window:{ ReportingUI:{ deactivate() {}, render() { renders++; } }, CsatUI:{ deactivate() {}, render() { renders++; } }, SettingsUI:{ canLeave:() => { leaveCalls++; return allowed; }, deactivate() {}, render() { renders++; } } },
     dashboard() { renders++; }, calendar() { renders++; }, availability() { renders++; }, bookingsView() { renders++; }, blocksView() { renders++; } };
   vm.createContext(context);
@@ -51,7 +51,7 @@ function navigation() {
   return { nodes, tabs, listeners, context, deny:() => { allowed = false; }, counts:() => ({ leaveCalls, renders }) };
 }
 
-test('admin loads one global shared theme control and preserves all destinations including Reporting', () => {
+test('admin loads one global shared theme control and preserves every destination', () => {
   assert.equal((html.match(/id="themeToggle"/g) || []).length, 1);
   assert.ok(html.indexOf('id="themeToggle"') < html.indexOf('id="gate"'));
   assert.match(html, /role="switch" aria-checked="false" aria-label="Dark mode"/);

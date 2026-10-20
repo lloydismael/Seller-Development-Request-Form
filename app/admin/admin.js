@@ -40,7 +40,7 @@
     $("#view").prepend(notice);
   } };
 
-  let bookings = [], blocks = [], mode = "local";
+  let bookings = [], blocks = [], mode = "local", bookingsLoadedAt = null;
   const st = {
     tab: "dashboard", dashboardSelection: "", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     calFac: "", calStatus: "active", week: startOfWeek(new Date()),
@@ -98,6 +98,7 @@
     try {
       if (identity?.role === "facilitator") { render(); return; }
       [bookings, blocks] = await Promise.all([S.list(), S.listBlocks()]);
+      bookingsLoadedAt = new Date().toISOString();
     } catch (e) {
       if (e.status === 401) { location.reload(); return; }
       $("#view").innerHTML = `<div class="alert">Could not load data: ${esc(e.message)}</div>`;
@@ -124,6 +125,7 @@
   // ---------- shell ----------
   const pages = {
     dashboard: ["Dashboard", "A clear view of your training requests and upcoming sessions."],
+    reporting: ["Reporting", "Explore booking trends, delivery, facilitator workload and training feedback. Filter, export and share a clear report."],
     calendar: ["Calendar", "Plan ahead with a shared view of training sessions and time off."],
     availability: ["Facilitator availability", "Find the right facilitator and an available time for your session."],
     bookings: ["Bookings", "Review requests, manage schedules and export your booking records."],
@@ -240,6 +242,7 @@
   function render() {
     if (identity?.role === "facilitator" && !["csat", "profile"].includes(st.tab)) st.tab = "csat";
     window.CsatUI?.deactivate();
+    window.ReportingUI?.deactivate();
     const [pageTitle, description] = pages[st.tab];
     $("#pageTitle").textContent = pageTitle;
     $("#pageDescription").textContent = description;
@@ -248,6 +251,12 @@
       if (b.dataset.tab === st.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     const v = $("#view");
+    if (st.tab === "reporting") {
+      window.SettingsUI.deactivate();
+      window.ReportingUI.render(v, { S, identity, mode, bookings, blocks, snapshot:bookingsLoadedAt, toast, openBooking,
+        updateData: (nextBookings, nextBlocks) => { bookings = nextBookings; blocks = nextBlocks; bookingsLoadedAt = new Date().toISOString(); } });
+      return;
+    }
     if (["csat", "facilitators"].includes(st.tab)) {
       window.SettingsUI.deactivate();
       window.CsatUI.render(st.tab, v, { S, identity, labels:FACS });

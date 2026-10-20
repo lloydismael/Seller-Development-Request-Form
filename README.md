@@ -81,6 +81,36 @@ remain supported. Existing records need no status migration; the separately depl
 updated for live availability and conflict rules to change. Browser demo scheduling uses the same
 reservation statuses.
 
+## Reporting workspace
+
+Administrators have a read-only Reporting menu with inclusive training-date filters,
+status, facilitator, category, division and search. Filters apply to KPIs, monthly
+booking trends, status/category/topic/team/facilitator/venue comparisons, booking
+records and CSV exports. Historical groups remain visible; missing values use
+“Not recorded”. Charts show exact labels and expandable value tables. Sortable
+booking details use 25-row pages; exports and print/PDF include all matching records.
+Reporting follows shared light/dark themes with opaque, high-contrast chart surfaces,
+responsive controls and a print-specific layout.
+
+Completion rate is Completed divided by all filtered bookings. Reserved hours sum
+valid Approved/Completed time slots per booking; overlaps are not deduplicated and
+this is not utilization or attendance. Blocked ranges intersect the selected dates;
+booking-only filters restrict them to facilitators in matching bookings. Ranges are
+not counts of unavailable days. Undated/invalid-date bookings are omitted from trends
+and excluded when a date range is selected. Charts aggregate periods over 24 months
+by year; monthly values remain in the underlying table and summary export.
+
+Load CSAT explicitly to read matching Phone Videography session feedback with at most
+four concurrent read requests. It uses booking training dates, not submission dates,
+and response-weighted rating averages, never an average of session averages. Counts
+are submissions, not unique attendees; shared responses may repeat. Partial failures
+show session coverage and are identified in summary exports. Respondent names/emails
+are not displayed or retained by Reporting. CSAT is unavailable in browser demo mode.
+CSV cells neutralize spreadsheet formula prefixes. Booking exports include recorded
+answer snapshots and notes; summary exports exclude respondent identities. No new
+backend route or production mutation is required. Accounts, activity and form
+configuration remain in their dedicated workspaces.
+
 ## Activity attribution
 
 New booking submission events snapshot the validated requestor name with a Self-reported label;

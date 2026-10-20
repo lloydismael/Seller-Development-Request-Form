@@ -40,8 +40,8 @@ function navigation() {
   const listeners = {};
   let allowed = true, leaveCalls = 0, renders = 0;
   const context = { document:{ querySelectorAll:() => tabs, addEventListener:(type, handler) => { listeners[type] = handler; } },
-    $:selector => nodes[selector], st:{ tab:'dashboard' }, identity:{ role:'admin' }, FACS:[], mode:'local', S:{}, Q:{}, sourceConfig:{}, toast() {}, applyConfig() {}, accessibleActions() {},
-    window:{ CsatUI:{ deactivate() {}, render() { renders++; } }, SettingsUI:{ canLeave:() => { leaveCalls++; return allowed; }, deactivate() {}, render() { renders++; } } },
+    $:selector => nodes[selector], st:{ tab:'dashboard' }, identity:{ role:'admin' }, FACS:[], mode:'local', S:{}, Q:{}, sourceConfig:{}, bookings:[], blocks:[], bookingsLoadedAt:null, openBooking() {}, toast() {}, applyConfig() {}, accessibleActions() {},
+    window:{ ReportingUI:{ deactivate() {}, render() { renders++; } }, CsatUI:{ deactivate() {}, render() { renders++; } }, SettingsUI:{ canLeave:() => { leaveCalls++; return allowed; }, deactivate() {}, render() { renders++; } } },
     dashboard() { renders++; }, calendar() { renders++; }, availability() { renders++; }, bookingsView() { renders++; }, blocksView() { renders++; } };
   vm.createContext(context);
   const shell = source.slice(source.indexOf('  const pages ='), source.indexOf('  let user, identity;'));
@@ -51,14 +51,14 @@ function navigation() {
   return { nodes, tabs, listeners, context, deny:() => { allowed = false; }, counts:() => ({ leaveCalls, renders }) };
 }
 
-test('admin loads one global shared theme control and preserves all nine destinations', () => {
+test('admin loads one global shared theme control and preserves all destinations including Reporting', () => {
   assert.equal((html.match(/id="themeToggle"/g) || []).length, 1);
   assert.ok(html.indexOf('id="themeToggle"') < html.indexOf('id="gate"'));
   assert.match(html, /role="switch" aria-checked="false" aria-label="Dark mode"/);
   for (const resource of ['/design-tokens.css', '/ui-controls.css', '/theme.js']) assert.ok(html.includes(resource));
   assert.ok(html.indexOf('/design-tokens.css') < html.indexOf('/admin/admin.css'));
   assert.match(html, /id="navToggle"[^>]*aria-expanded="false"[^>]*aria-controls="adminNav"/);
-  assert.deepEqual(navigation().tabs.map(tab => tab.dataset.tab), ['dashboard', 'calendar', 'availability', 'bookings', 'blocks', 'csat', 'facilitators', 'profile', 'builder', 'activity', 'settings']);
+  assert.deepEqual(navigation().tabs.map(tab => tab.dataset.tab), ['dashboard', 'reporting', 'calendar', 'availability', 'bookings', 'blocks', 'csat', 'facilitators', 'profile', 'builder', 'activity', 'settings']);
 });
 
 test('mobile navigation expands, selects every destination and updates current location', () => {
@@ -74,7 +74,7 @@ test('mobile navigation expands, selects every destination and updates current l
     assert.ok(n.nodes['#pageTitle'].textContent);
     assert.equal(n.tabs.filter(item => item.attrs['aria-current'] === 'page').length, 1);
   }
-  assert.deepEqual(n.counts(), { leaveCalls:10, renders:10 });
+  assert.deepEqual(n.counts(), { leaveCalls:11, renders:11 });
 });
 
 test('facilitator navigation cannot render administrator destinations', () => {

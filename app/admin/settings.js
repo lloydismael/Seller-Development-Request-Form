@@ -11,7 +11,7 @@
   const actions = ["booking.create", "booking.update", "booking.delete", "block.create", "block.delete", "profile.update", "password.change", "form.draft", "form.publish", "facilitator.create", "facilitator.update", "training.complete", "training.accept", "training.decline", "attendee.create", "invitation.issue", "invitation.revoke", "sharing.rotate", "sharing.revoke", "sharing.reactivate"];
   let activeTab = "", generation = 0, busy = false, profileDirty = false;
   let draft = null, saved = "", selected = "", previewOpen = false;
-  let activityQuery = { page:1, action:"", from:"" };
+  let activityQuery = { page:1, action:"", from:"", to:"", actor:"", actorType:"" };
   const dirty = () => profileDirty || !!draft && JSON.stringify(draft.config) !== saved;
   window.addEventListener("beforeunload", e => { if (dirty() || busy) { e.preventDefault(); e.returnValue = ""; } });
 
@@ -40,7 +40,7 @@
     let el = view.querySelector(".settings-error");
     if (!el) { el = document.createElement("div"); el.className = "alert settings-error"; view.prepend(el); }
     el.setAttribute("role", "alert"); el.tabIndex = -1;
-    el.textContent = err.status === 409 ? `${err.message} Your unsaved edits were retained. Use Reload draft to discard them and fetch the latest revision.` :
+    el.textContent = err.status === 409 ? `${err.message} Your unsaved edits were retained. ${activeTab === "profile" ? "Reload the page to fetch the latest profile." : "Use Reload draft to discard them and fetch the latest revision."}` :
       err.status === 401 ? "Your session expired. Reload this page and sign in again; unsaved edits will be lost." : err.message || "Request failed. Please retry.";
     el.focus();
   }
@@ -55,6 +55,7 @@
     finally {
       busy = false; view.removeAttribute("aria-busy");
       controls.forEach((el, i) => { if (el.isConnected) el.disabled = disabled[i]; });
+      if (activeTab === "profile") view.querySelector("#profileForm")?.oninput?.();
     }
   }
   async function render(tab, view, context) {
@@ -215,18 +216,17 @@
   function profile(view, ctx, account) {
     const p = account.profile || {}, local = account.provider === "local";
     profileDirty = false;
-    view.innerHTML = `<div class="settings-heading"><div><h2>My profile</h2><p class="muted">Manage your contact details and account security.</p></div></div>
-      <div class="settings-grid">
-        <section class="panel"><h3>Account details</h3><p class="muted small">Signed in with ${esc(account.provider || "your identity provider")}.</p>
+    view.innerHTML = `<div class="settings-grid">
+        <section class="panel"><h3>Contact details</h3><dl class="account-metadata"><dt>Role</dt><dd>${account.role === "facilitator" ? "Facilitator" : "Administrator"}</dd>${account.facilitatorLabel ? `<dt>Assignment</dt><dd>${esc(account.facilitatorLabel)}</dd>` : ""}</dl><p class="muted small">Sign-in method: ${local ? "Username and password" : "External identity provider"}</p>
           <form id="profileForm" class="settings-form">
             <label>Username<input name="username" value="${esc(account.user)}" autocomplete="username" readonly></label>
             <label>Display name<input name="displayName" value="${esc(p.displayName)}" autocomplete="name" maxlength="100" required></label>
             <label>Email<input name="email" type="email" value="${esc(p.email)}" autocomplete="email" maxlength="254"></label>
             <label>Phone<input name="phone" type="tel" value="${esc(p.phone)}" autocomplete="tel" maxlength="32"></label>
-            <p class="muted small">Your login username cannot be changed here.</p><button class="btn primary" type="submit">Save profile</button>
+            <p class="muted small">Email is for contact only, not sign-in or password recovery.</p><p id="profileFeedback" role="status" aria-live="polite" hidden></p><div class="settings-actions"><button class="btn primary" type="submit" id="saveProfile" disabled>Save changes</button><button class="btn ghost" type="button" id="cancelProfile" disabled>Cancel changes</button></div>
           </form>
         </section>
-        <section class="panel"><h3>Password</h3>${local ? `<p class="muted" id="passwordPolicy">Use 12–128 characters, different from your current password. Spaces and pasted passwords are supported. A successful change signs out all sessions.</p>
+        <section class="panel"><h3>Security</h3>${local ? `<p class="muted" id="passwordPolicy">Use 12–128 characters. Changing your password signs out all sessions.</p>
           <form id="passwordForm" class="settings-form" aria-describedby="passwordPolicy">
             <input type="text" name="username" value="${esc(account.user)}" autocomplete="username" readonly hidden>
             ${[["currentPassword", "Current password", "current-password"], ["newPassword", "New password", "new-password"], ["confirmPassword", "Confirm new password", "new-password"]].map(([name, title, autocomplete]) => `<label for="${name}">${title}</label><div class="password-control"><input id="${name}" name="${name}" type="password" autocomplete="${autocomplete}" ${name !== "currentPassword" ? 'minlength="12"' : ""} maxlength="128" required><button class="btn" type="button" data-reveal="${name}" aria-controls="${name}" aria-label="Show ${title.toLowerCase()}" aria-pressed="false">Show</button></div>`).join("")}
@@ -234,22 +234,33 @@
           </form>` : '<p class="muted">This account uses an external identity provider. Change your password with that provider; this portal cannot update it.</p>'}</section>
       </div>`;
     const pf = view.querySelector("#profileForm"), passwordForm = view.querySelector("#passwordForm");
+    const contactDirty = () => ["displayName", "email", "phone"].some(k => pf.elements[k].value.trim() !== (p[k] || ""));
+    const feedback = (message, invalid = false) => {
+      const node = view.querySelector("#profileFeedback"); node.textContent = message; node.hidden = false; node.className = invalid ? "alert" : "account-notice"; node.setAttribute("role", invalid ? "alert" : "status");
+    };
     const formsDirty = () => {
-      profileDirty = ["displayName", "email", "phone"].some(k => pf.elements[k].value !== (p[k] || "")) ||
-        !!passwordForm && ["currentPassword", "newPassword", "confirmPassword"].some(k => passwordForm.elements[k].value !== "");
+      const changed = contactDirty();
+      profileDirty = changed || !!passwordForm && ["currentPassword", "newPassword", "confirmPassword"].some(k => passwordForm.elements[k].value !== "");
+      view.querySelector("#saveProfile").disabled = !changed;
+      view.querySelector("#cancelProfile").disabled = !changed;
+    };
+    view.querySelector("#cancelProfile").onclick = () => {
+      for (const k of ["displayName", "email", "phone"]) pf.elements[k].value = p[k] || "";
+      formsDirty(); feedback("Contact changes discarded.");
     };
     pf.oninput = formsDirty;
     pf.onsubmit = e => {
       e.preventDefault();
+      if (!contactDirty() || !pf.reportValidity()) return;
       const fields = Object.fromEntries(["displayName", "email", "phone"].map(k => [k, pf.elements[k].value.trim()]));
       if (!fields.displayName || fields.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email) || fields.phone && !/^[+()\d .-]+$/.test(fields.phone)) {
-        error(view, new Error("Enter a display name and valid email/phone contact details.")); return;
+        feedback("Enter a display name and valid email/phone contact details.", true); return;
       }
       operation(view, async () => {
         const result = await ctx.S.updateProfile(fields);
         Object.assign(p, result.profile || fields);
         for (const k of Object.keys(fields)) pf.elements[k].value = p[k];
-        formsDirty(); ctx.onProfile?.(result); ctx.toast("Profile saved"); warning(view, result);
+        formsDirty(); ctx.onProfile?.(result); feedback("Contact details saved."); warning(view, result);
       });
     };
     if (!passwordForm) return;
@@ -563,13 +574,28 @@
   }
 
   function activity(view, ctx, result) {
-    view.innerHTML = `<form id="activityFilters" class="toolbar"><label>Action<select name="action">${option("", "All actions", activityQuery.action)}${select(actions, activityQuery.action)}</select></label><label>Since date<input type="date" name="from" value="${esc(activityQuery.from)}"></label><button type="submit" class="btn primary">Apply filters</button><button type="button" class="btn" id="activityRefresh">Refresh</button></form>
-      <section class="panel activity-panel"><table class="tbl"><caption class="sr-only">Admin activity, page ${esc(result.page)}</caption><thead><tr><th scope="col">When</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Summary</th></tr></thead><tbody>${result.items.map(item => `<tr><td>${esc(new Date(item.timestamp).toLocaleString())}</td><td>${esc(item.actor)}</td><td>${esc(item.action)}</td><td class="activity-target">${esc(item.target)}</td><td>${esc(item.summary)}</td></tr>`).join("") || '<tr><td colspan="5">No activity matches these filters.</td></tr>'}</tbody></table></section>
-      <div class="toolbar"><button type="button" class="btn" id="activityPrev" ${result.page <= 1 ? "disabled" : ""}>Previous</button><span role="status">Page ${esc(result.page)}</span><button type="button" class="btn" id="activityNext" ${result.hasMore ? "" : "disabled"}>Next</button></div>`;
+    const actionNames = { "booking.create":"Booking submitted", "booking.update":"Booking updated", "booking.delete":"Booking deleted", "block.create":"Blocked dates added", "block.delete":"Blocked dates removed", "profile.update":"Contact details updated", "password.change":"Password changed", "form.draft":"Form draft saved", "form.publish":"Form published", "facilitator.create":"Facilitator account created", "facilitator.update":"Facilitator account updated", "training.complete":"Training completed", "training.accept":"Training accepted", "training.decline":"Training declined", "attendee.create":"Attendee added", "invitation.issue":"Invitation issued", "invitation.revoke":"Invitation revoked", "sharing.rotate":"Sharing link rotated", "sharing.revoke":"Sharing disabled", "sharing.reactivate":"Sharing enabled" };
+    const actor = item => {
+      const details = item.actorDetails || {};
+      const kind = ["self-reported", "authenticated"].includes(details.kind) ? details.kind : "unknown";
+      return { ...details, kind, name:details.name || (item.actor === "anonymous" ? "Anonymous" : item.actor || "Unknown"), label:kind === "self-reported" ? "Self-reported" : kind === "authenticated" ? "Authenticated account" : "Not recorded" };
+    };
+    const actorHtml = item => {
+      const a = actor(item);
+      return `<strong>${esc(a.name)}</strong><br><span class="pill ${a.kind === "authenticated" ? "Approved" : "Pending"}">${esc(a.label)}</span>${a.kind === "authenticated" ? `<br><small>${esc(a.username || "")} · ${esc(a.role || "")}</small>` : ""}`;
+    };
+    const bookingAction = item => /^(booking\.|training\.|sharing\.|attendee\.create$)/.test(item.action) && item.action !== "booking.delete";
+    view.innerHTML = `<p class="muted">Names reflect the event time. Requestor names are self-reported, not verified identities. Source IP and location are not collected.</p><form id="activityFilters" class="toolbar activity-filters"><label>Actor<input type="search" name="actor" maxlength="256" placeholder="Name or username" value="${esc(activityQuery.actor)}"></label><label>Actor type<select name="actorType">${option("", "All types", activityQuery.actorType)}${option("self-reported", "Self-reported", activityQuery.actorType)}${option("authenticated", "Authenticated account", activityQuery.actorType)}${option("unknown", "Not recorded", activityQuery.actorType)}</select></label><label>Action<select name="action">${option("", "All actions", activityQuery.action)}${actions.map(action => option(action, actionNames[action] || action, activityQuery.action)).join("")}</select></label><label>From<input type="date" name="from" value="${esc(activityQuery.from)}"></label><label>To<input type="date" name="to" value="${esc(activityQuery.to)}"></label><button type="submit" class="btn primary">Apply filters</button><button type="button" class="btn ghost" id="activityClear">Clear filters</button><button type="button" class="btn" id="activityRefresh">Refresh</button></form><p id="activityFilterError" class="alert" role="alert" hidden></p>
+      <section class="panel activity-panel"><table class="tbl"><caption class="sr-only">Activity, page ${esc(result.page)}</caption><thead><tr><th scope="col">When</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Summary</th><th scope="col">Details</th></tr></thead><tbody>${result.items.map((item,index) => `<tr><td>${esc(new Date(item.timestamp).toLocaleString())}</td><td>${actorHtml(item)}</td><td>${esc(actionNames[item.action] || item.action)}</td><td>${esc(item.summary)}</td><td><button type="button" class="btn sm" data-event-details="${index}" aria-expanded="false" aria-controls="eventDetails${index}">Details</button></td></tr><tr id="eventDetails${index}" hidden><td colspan="5"><dl class="activity-event-details"><dt>Actor</dt><dd>${actorHtml(item)}</dd><dt>Identity confidence</dt><dd>${actor(item).kind === "self-reported" ? "Submitted name; identity not verified." : actor(item).kind === "authenticated" ? "Signed-in account; display name is editable." : "Legacy event; actor identity was not recorded."}</dd><dt>Timestamp</dt><dd>${esc(item.timestamp)}</dd><dt>Action</dt><dd>${esc(item.action)}</dd><dt>Target</dt><dd class="activity-target">${esc(item.target)}</dd><dt>Source</dt><dd>${item.source === "local-shared" ? "Local shared-production API. " : item.source === "server" ? "Server API. " : ""}Source unavailable — IP and location are not collected.</dd></dl>${bookingAction(item) && ctx.onViewBooking ? `<button type="button" class="btn sm" data-activity-booking="${esc(item.target)}">View booking</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="5">No activity matches these filters.</td></tr>'}</tbody></table></section>
+      <div class="toolbar"><button type="button" class="btn" id="activityPrev" ${result.page <= 1 ? "disabled" : ""}>Previous</button><span role="status" aria-live="polite">Page ${esc(result.page)} · ${result.items.length} event${result.items.length === 1 ? "" : "s"}</span><button type="button" class="btn" id="activityNext" ${result.hasMore ? "" : "disabled"}>Next</button></div>`;
     view.querySelector("#activityFilters").onsubmit = e => {
       e.preventDefault(); const form = e.currentTarget;
-      activityQuery = { page:1, action:form.elements.action.value, from:form.elements.from.value }; render("activity", view, ctx);
+      if (form.elements.from.value && form.elements.to.value && form.elements.from.value > form.elements.to.value) { const error = view.querySelector("#activityFilterError"); error.textContent = "From date must not be after To date."; error.hidden = false; return; }
+      activityQuery = { page:1, ...Object.fromEntries(["action","from","to","actor","actorType"].map(key => [key, form.elements[key].value.trim()])) }; render("activity", view, ctx);
     };
+    view.querySelector("#activityClear").onclick = () => { activityQuery = { page:1, action:"", from:"", to:"", actor:"", actorType:"" }; render("activity", view, ctx); };
+    view.querySelectorAll("[data-event-details]").forEach(button => { button.onclick = () => { const row = view.querySelector(`#eventDetails${button.dataset.eventDetails}`); row.hidden = !row.hidden; button.setAttribute("aria-expanded", String(!row.hidden)); }; });
+    view.querySelectorAll("[data-activity-booking]").forEach(button => { button.onclick = () => ctx.onViewBooking(button.dataset.activityBooking); });
     view.querySelector("#activityRefresh").onclick = () => render("activity", view, ctx);
     view.querySelector("#activityPrev").onclick = () => { activityQuery.page = Math.max(1, result.page - 1); render("activity", view, ctx); };
     view.querySelector("#activityNext").onclick = () => { activityQuery.page = result.page + 1; render("activity", view, ctx); };

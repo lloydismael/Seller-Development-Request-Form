@@ -255,7 +255,11 @@
     }
     if (["profile", "builder", "activity", "settings"].includes(st.tab)) {
       window.SettingsUI.render(st.tab, v, { S, toast, mode, config:sourceConfig, navigate: tab => document.querySelector(`[data-tab="${tab}"]`).click(), onPublished: result => applyConfig(result.config),
-        onProfile: account => { $("#userName").textContent = account.profile?.displayName || account.user; } });
+        onProfile: account => { $("#userName").textContent = account.profile?.displayName || account.user; },
+        onViewBooking: id => {
+          if (!bookings.some(b => b.id === id)) { toast("Booking is no longer available. Refresh the dashboard and retry."); return; }
+          openBooking(id);
+        } });
       return;
     }
     window.SettingsUI.deactivate();

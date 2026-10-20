@@ -81,6 +81,25 @@ remain supported. Existing records need no status migration; the separately depl
 updated for live availability and conflict rules to change. Browser demo scheduling uses the same
 reservation statuses.
 
+## Activity attribution
+
+New booking submission events snapshot the validated requestor name with a Self-reported label;
+this name is not proof of identity. Signed-in actions snapshot the actor's display name, username,
+role and account ID independently of the booking requestor or modified account. Later profile
+changes do not rewrite historical events. Older records are labelled Not recorded and are not
+reconstructed from current bookings. The log is operational history, not a tamper-proof ledger.
+
+Administrators can search actors, filter actor types and actions, set inclusive From/To dates,
+clear filters and expand event details. Filters apply before pagination. Friendly action names
+are displayed while technical actions, timestamps and target IDs remain available in details.
+Related booking links may be unavailable after deletion or until the dashboard data refreshes.
+
+IP addresses and geolocation are not collected in this release. Event details explicitly show
+Source unavailable; enabling masked network attribution requires a verified proxy trust model
+and agreed retention/privacy policy. No third-party location lookups are performed. Activity
+remains administrator-only and never contains passwords, tokens, cookies or complete request bodies.
+Deploy the updated API before relying on actor snapshots and the new filters in production.
+
 ## Facilitator account management
 
 The administrator's Facilitator accounts workspace provides account totals, active/disabled
@@ -94,8 +113,18 @@ and enable/disable actions have separate confirmation flows. Initial/reset passw
 Reveal/copy controls are explicit, passwords are not saved to browser storage, and password fields
 are cleared when the drawer closes. Hand credentials over through an approved private channel;
 clear the clipboard afterward. Unsaved changes prompt before leaving; saves block duplicate actions.
-Every existing account update invalidates sessions, and disabling prevents sign-in without deleting
-account or training history. Administrator authorization and unique assignments remain API-enforced.
+Assignment, password and status updates invalidate sessions; contact-only updates preserve them.
+Disabling prevents sign-in without deleting account or training history.
+
+My profile is available to both administrators and facilitators for their own display name,
+email and optional phone. The page has Contact details and Security sections, read-only username,
+role and facilitator assignment, unchanged-save protection, cancellation and inline feedback.
+Administrators can create facilitator contacts and edit them separately from assignments in account
+details; directory search includes display names and email. Email is contact information only,
+not a verified address, sign-in identifier or password-recovery mechanism. Contact information
+is not published in availability or recorded in audit summaries; CSV exports remain contact-free. Administrator authorization and unique assignments remain API-enforced.
+Activity actor metadata separately snapshots the signed-in actor's display name, not the modified
+account's contact payload. Administrator authorization and unique assignments remain API-enforced.
 
 Account details show paginated recorded activity filtered by account ID. Older records may show
 “Not recorded” timestamps or generic update summaries. This is operational history, not a complete

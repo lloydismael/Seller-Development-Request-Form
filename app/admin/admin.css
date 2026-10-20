@@ -253,6 +253,11 @@ input[readonly] { background:var(--ui-raised); color:var(--ui-muted); }
 .activity-panel { padding:0; }
 .activity-panel .tbl tbody tr { cursor:default; }
 .activity-target { overflow-wrap:anywhere; max-width:240px; }
+.activity-filters label { display:grid; gap:6px; min-width:140px; }
+.activity-filters input, .activity-filters select { max-width:100%; }
+.activity-event-details { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; text-align:left; }
+.activity-event-details dd { margin:0; overflow-wrap:anywhere; }
+@media (max-width:600px) { .activity-event-details { grid-template-columns:minmax(0,1fr); } .activity-filters label { width:100%; } }
 .answer-id { display:block; font-weight:400; margin-top:3px; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .toast { max-width:calc(100vw - 32px); overflow-wrap:anywhere; }

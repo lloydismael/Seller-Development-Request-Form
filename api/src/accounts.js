@@ -182,11 +182,17 @@ async function manageFacilitators(who, input, id) {
   const actor = await owned(who);
   if (actor.value.role !== "admin") throw fail("Administrator required.", 403);
   if (!input) return (await store.accounts.list()).filter(a => a.role === "facilitator").map(facilitatorAccount);
-  if (typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "facilitatorLabel", "disabled"].includes(k))) throw validation("Invalid account fields.");
-  const registry = await store.accounts.getWithVersion("facilitator-directory");
-  const directory = registry?.value || { id:"facilitator-directory", users:{}, labels:{} };
+  if (typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["username", "password", "facilitatorLabel", "disabled", "profile"].includes(k))) throw validation("Invalid account fields.");
+  const profile = Object.hasOwn(input, "profile") ? validateProfile(input.profile) : null;
   const current = id ? await store.accounts.getWithVersion(id) : null;
   if (id && (!current || current.value.role !== "facilitator")) throw fail("Account not found.", 404);
+  if (current && profile && Object.keys(input).every(k => k === "profile")) {
+    const value = { ...current.value, profile:{ ...current.value.profile, ...profile }, updatedAt:new Date().toISOString() };
+    await store.accounts.compareAndSwap(id, value, current.version);
+    return facilitatorAccount(value);
+  }
+  const registry = await store.accounts.getWithVersion("facilitator-directory");
+  const directory = registry?.value || { id:"facilitator-directory", users:{}, labels:{} };
   const username = current?.value.username || input.username;
   const label = input.facilitatorLabel ?? current?.value.facilitatorLabel;
   if (typeof username !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._@-]{2,99}$/.test(username) || ["constructor", "prototype", "__proto__"].includes(username)) throw validation("Use a unique username of 3–100 characters.");
@@ -197,6 +203,7 @@ async function manageFacilitators(who, input, id) {
   if (input.disabled !== undefined && typeof input.disabled !== "boolean") throw validation("disabled must be boolean.");
   if ((!current || input.password !== undefined) && (typeof input.password !== "string" || input.password.length < 12 || input.password.length > 128)) throw validation("Password must contain 12–128 characters.");
   const value = current ? { ...current.value } : { id:accountId, username, provider:"local", role:"facilitator", credentialVersion:1, profile:{ displayName:label, email:"", phone:"" }, createdAt:new Date().toISOString() };
+  if (profile) value.profile = { ...value.profile, ...profile };
   if (input.password !== undefined) value.credential = await hashPassword(input.password);
   if (current) value.credentialVersion++;
   value.disabled = input.disabled ?? value.disabled ?? false;

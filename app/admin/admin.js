@@ -42,7 +42,7 @@
 
   let bookings = [], blocks = [], mode = "local";
   const st = {
-    tab: "dashboard", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    tab: "dashboard", dashboardSelection: "", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     calFac: "", calStatus: "active", week: startOfWeek(new Date()),
     q: "", fStatus: "", fCat: "", fFac: "", fConflict: "", fWhen: "upcoming", prefillDate: ""
   };
@@ -297,10 +297,17 @@
     const competingCount = conflicts.filter(b => conflictsFor(b).some(c => c.type === "competing")).length;
     const confirmedCount = conflicts.filter(b => conflictsFor(b).some(c => ["reserved", "confirmed"].includes(c.type))).length;
     const groups = window.AdminConflicts.groups(bookings, blocks).sort((a, b) => a.date.localeCompare(b.date));
+    const selections = {
+      total: { label:"Total requests", items:bookings },
+      pending: { label:"Pending approval", items:pending, tone:"warn" },
+      upcoming: { label:"Upcoming sessions", items:upcoming },
+      month: { label:"Sessions this month", items:thisMonth },
+      conflicts: { label:"Conflicts", items:conflicts, tone:conflicts.length ? "bad" : "" }
+    };
     v.innerHTML = `
-      <div class="stats">${stat("Total requests", bookings.length)}${stat("Pending approval", pending.length, "warn")}
-        ${stat("Upcoming sessions", upcoming.length)}${stat("Sessions this month", thisMonth.length)}
-        ${stat("Conflicts", conflicts.length, conflicts.length ? "bad" : "")}</div>
+      <div class="stats dashboard-tiles" role="group" aria-label="Filter dashboard bookings">${Object.entries(selections).map(([key, selection]) => `<button type="button" class="stat dashboard-tile ${selection.tone || ""}" data-dashboard-tile="${key}" aria-pressed="false" aria-controls="dashboardResults"><span class="n">${selection.items.length}</span><span class="l">${esc(selection.label)}</span><span class="tile-selected-mark" aria-hidden="true">✓ Selected</span></button>`).join("")}</div>
+      <p id="dashboardSelectionStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+      <section id="dashboardResults" class="panel dashboard-results" aria-labelledby="dashboardResultsTitle" hidden></section>
       <p class="muted">${competingCount} bookings in competing pending requests · ${confirmedCount} bookings overlapping confirmed reservations. Counts show unique affected bookings; categories may overlap.</p>
       <div class="grid2">
         <div class="panel"><h3>Pending approval</h3>${pending.length ? pending.slice(0, 10).map(b => rowHtml(b, true)).join("") : empty("No pending requests.")}</div>
@@ -309,6 +316,42 @@
         <div class="panel"><h3>Requests by training category</h3>${bars(CATS.map(c => [c, bookings.filter(b => b.category === c).length]))}</div>
       </div>
       ${conflicts.length ? `<section class="panel"><h3>⚠ Conflicts to resolve</h3><p class="muted">Pending overlaps need review but do not reserve slots. Confirmed overlaps prevent normal approval.</p>${groups.map(group => `<section class="conflict-group"><h4>${esc(group.facilitator)} · ${fmtDate(group.date)}</h4>${group.items.sort(byDate).map(b => `<div class="conflict-item">${rowHtml(b)}<button type="button" class="btn sm" data-open="${esc(b.id)}" aria-label="View booking for ${esc(b.requestor || title(b))}">View booking</button></div>`).join("")}</section>`).join("")}</section>` : ""}`;
+    function updateSelection() {
+      const selection = selections[st.dashboardSelection];
+      v.querySelectorAll("[data-dashboard-tile]").forEach(button => {
+        const selected = button.dataset.dashboardTile === st.dashboardSelection;
+        button.setAttribute("aria-pressed", String(selected));
+        button.classList.toggle("selected", selected);
+      });
+      const result = v.querySelector("#dashboardResults");
+      result.hidden = !selection;
+      if (!selection) {
+        result.innerHTML = "";
+        v.querySelector("#dashboardSelectionStatus").textContent = "Selection cleared. Dashboard overview shown.";
+        return;
+      }
+      const selectedRows = [...selection.items].sort(byDate);
+      const content = st.dashboardSelection === "conflicts"
+        ? groups.map(group => `<section class="conflict-group"><h4>${esc(group.facilitator)} · ${fmtDate(group.date)}</h4>${group.items.map(b => rowHtml(b)).join("")}</section>`).join("")
+        : selectedRows.map(b => rowHtml(b, st.dashboardSelection === "pending")).join("");
+      result.innerHTML = `<div class="toolbar"><h3 id="dashboardResultsTitle">${esc(selection.label)} · ${selection.items.length} booking${selection.items.length === 1 ? "" : "s"}</h3><span class="spacer"></span><button type="button" class="btn ghost" id="clearDashboardSelection">Clear selection</button></div>${content || empty("No bookings in this category.")}`;
+      result.querySelectorAll("[data-open]").forEach(row => row.classList.add("dashboard-match"));
+      accessibleActions(result);
+      v.querySelector("#dashboardSelectionStatus").textContent = `${selection.label}: ${selection.items.length} matching bookings highlighted.`;
+      result.querySelector("#clearDashboardSelection").onclick = () => {
+        const key = st.dashboardSelection;
+        st.dashboardSelection = "";
+        updateSelection();
+        v.querySelector(`[data-dashboard-tile="${key}"]`).focus();
+      };
+    }
+    v.querySelectorAll("[data-dashboard-tile]").forEach(button => {
+      button.onclick = () => {
+        st.dashboardSelection = st.dashboardSelection === button.dataset.dashboardTile ? "" : button.dataset.dashboardTile;
+        updateSelection();
+      };
+    });
+    updateSelection();
   }
 
   // ---------- Calendar ----------

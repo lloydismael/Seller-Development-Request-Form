@@ -59,6 +59,12 @@ Approved and Completed bookings reserve time; Rejected and Cancelled bookings do
 Blocked dates remain unavailable. New requests are still rejected when they overlap a confirmed
 reservation. Pending requests remain visible in administrator queues and calendars.
 
+Dashboard summary tiles are keyboard-accessible toggle buttons. Selecting a tile highlights it
+and displays all matching bookings in a highlighted results panel; Conflicts preserves grouped
+conflict details. Select another tile to switch, or select it again/use Clear selection to restore
+the overview. Selection stays in memory across data refresh and navigation, with updated counts,
+empty-category guidance and announced result changes. Booking and reservation rules are unchanged.
+
 Administrators also see informational conflicts between Pending, Approved and Completed
 bookings sharing a date/facilitator and overlapping time. The dashboard counts unique affected
 bookings and groups connected overlaps, while the bookings table provides text badges and a

@@ -589,10 +589,22 @@
     const answerText = value => Array.isArray(value) ? value.join("; ") : typeof value === "object" && value !== null ? JSON.stringify(value) : value;
     const venueList = historical(VENUES, b.venue);
     openModal(`
-      <h2>${esc(title(b))}</h2>
-      <p class="muted">${esc(b.category)} · requested by ${esc(b.requestor)} · submitted ${b.createdAt ? new Date(b.createdAt).toLocaleString("en-PH") : "—"}
-        ${b.updatedAt ? `<br>Last updated ${new Date(b.updatedAt).toLocaleString("en-PH")} by ${esc(b.updatedBy || "admin")}` : ""}</p>
-      <h3>Schedule &amp; status</h3>
+      <div class="booking-detail-head"><p class="booking-eyebrow">Booking request</p><h2>${esc(title(b))}</h2>
+        <p class="muted">${esc(b.requestor || "Requestor not recorded")}${b.division ? ` · ${esc(b.division)}` : ""}</p>
+        <span class="pill ${esc(b.status)}">${esc(b.status)}</span></div>
+      <dl class="booking-summary">
+        <div><dt>Training date</dt><dd>${esc(fmtDate(b.trainingDate))}</dd></div>
+        <div><dt>Time</dt><dd>${esc(b.time || "Not recorded")}</dd></div>
+        <div><dt>Facilitator</dt><dd>${esc(b.facilitator || "Not assigned")}</dd></div>
+        <div><dt>Participants</dt><dd>${esc(b.participants || "Not recorded")}</dd></div>
+        <div class="full"><dt>Venue</dt><dd>${esc(b.venue || "Not recorded")}</dd></div>
+      </dl>
+      <section class="booking-quick-actions" aria-label="Quick status changes">
+        <p class="muted small">Change request status</p><div class="booking-status-buttons">${(b.status === "Pending" ? ["Approved", "Rejected"] : b.status === "Approved" ? ["Completed", "Cancelled"] : ["Pending"]).map(status => `<button type="button" class="btn ${status === "Approved" || status === "Completed" ? "primary" : status === "Rejected" || status === "Cancelled" ? "danger" : ""}" data-booking-status="${status}">${({ Approved:"Approve", Rejected:"Reject", Completed:"Mark completed", Cancelled:"Cancel booking", Pending:"Reopen as pending" })[status]}</button>`).join("")}</div>
+        <p id="eFeedback" class="small" role="status" aria-live="polite"></p>
+      </section>
+      <div id="eConflict"></div>
+      <details class="booking-disclosure" id="eEditor"><summary>Edit schedule and notes</summary>
       <div class="form-grid">
         <label>Status<select id="eStatus">${opts(STATUSES, b.status)}</select></label>
         <label>Training date<input type="date" id="eDate" value="${esc(b.trainingDate)}"></label>
@@ -600,15 +612,17 @@
         <label>Time<select id="eTime">${opts(historical(TIMES, b.time), b.time)}</select></label>
         <label class="full">Venue<select id="eVenue">${opts(venueList, b.venue)}</select></label>
         <label class="full">Admin notes<textarea id="eNotes" placeholder="Internal notes (not visible to requestor)">${esc(b.adminNotes)}</textarea></label>
-      </div>
-      <div id="eConflict"></div>
-      <h3 class="section-heading">Original submission</h3>
-      ${b.formVersion ? `<p class="muted small">Form version: ${esc(b.formVersion)}</p>` : ""}
-      <table class="kv">${answerRows.map(([k, v, key]) => `<tr><th>${esc(k)}${key ? `<small class="answer-id">${esc(key)}</small>` : ""}</th><td>${esc(answerText(v))}</td></tr>`).join("")}</table>
-      <div class="modal-actions">
-        ${identity?.role === "admin" ? '<button class="btn danger" id="eDelete">Delete</button>' : ""}<span class="spacer"></span>
-        <button class="btn" id="eCancel">Close</button><button class="btn primary" id="eSave">Save changes</button>
-      </div>`);
+      </div><div class="booking-editor-actions"><button class="btn primary" id="eSave" disabled>Save changes</button></div></details>
+      <details class="booking-disclosure"><summary>Request details</summary>
+        ${b.requesterEmail ? `<p class="booking-contact"><strong>Requestor email</strong><br>${esc(b.requesterEmail)}</p>` : ""}
+        <table class="kv">${answerRows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(answerText(v))}</td></tr>`).join("")}</table>
+      </details>
+      <details class="booking-disclosure"><summary>Activity and reference</summary>
+        <dl class="booking-reference"><dt>Request reference</dt><dd>${esc(b.id)}</dd><dt>Submitted</dt><dd>${b.createdAt ? esc(new Date(b.createdAt).toLocaleString("en-PH")) : "Not recorded"}</dd>
+        ${b.updatedAt ? `<dt>Last updated</dt><dd>${esc(new Date(b.updatedAt).toLocaleString("en-PH"))} · ${esc(b.updatedBy || "admin")}</dd>` : ""}</dl>
+        ${identity?.role === "admin" ? '<button class="btn sm danger" id="eDelete">Delete request</button>' : ""}
+      </details>
+      <div class="modal-actions booking-detail-footer"><button class="btn" id="eCancel">Close</button></div>`);
     const draft = () => ({ status: $("#eStatus").value, trainingDate: $("#eDate").value, facilitator: $("#eFac").value,
       time: $("#eTime").value, venue: $("#eVenue").value, adminNotes: $("#eNotes").value });
     const showConflicts = () => {
@@ -616,8 +630,38 @@
       $("#eConflict").innerHTML = c.length ? `<div class="alert"><strong>⚠ Schedule conflicts</strong><ul class="conflict-details">${conflictDetails(draft(), b.id)}</ul><p>Competing pending requests do not reserve time. Review them before approval.</p></div>` :
         (S.isActive(draft().status) ? `<div class="alert ok">✔ No scheduling conflicts.</div>` : "");
     };
-    ["#eStatus", "#eDate", "#eFac", "#eTime"].forEach(s => ($(s).onchange = showConflicts));
+    const baseline = { status:b.status, trainingDate:b.trainingDate, facilitator:b.facilitator, time:b.time, venue:b.venue, adminNotes:b.adminNotes || "" };
+    const dirty = () => JSON.stringify(draft()) !== JSON.stringify(baseline);
+    let saving = false;
+    const updateActions = () => {
+      $("#eSave").disabled = saving || !dirty();
+      $("#modalBody").querySelectorAll("[data-booking-status]").forEach(button => { button.disabled = saving; });
+    };
+    ["#eStatus", "#eDate", "#eFac", "#eTime", "#eVenue", "#eNotes"].forEach(s => {
+      $(s).oninput = updateActions;
+      $(s).onchange = () => { showConflicts(); updateActions(); };
+    });
     showConflicts();
+    updateActions();
+    $("#modalBody").querySelectorAll("[data-booking-status]").forEach(button => {
+      button.onclick = async () => {
+        if (saving) return;
+        if (dirty()) {
+          $("#eEditor").open = true;
+          $("#eFeedback").textContent = "Save or undo your schedule edits before changing status.";
+          $("#eSave").focus(); return;
+        }
+        const status = button.dataset.bookingStatus;
+        if (!confirm(`${button.textContent.trim()} this request?`)) return;
+        saving = true; updateActions();
+        $("#eFeedback").textContent = "Updating request…";
+        try {
+          if (await saveBooking(b.id, { status })) { closeModal(); }
+          else $("#eFeedback").textContent = "Request status was not changed.";
+        } catch (error) { $("#eFeedback").textContent = "Could not confirm the update. Refresh before retrying."; }
+        finally { saving = false; if (!$("#modal").hidden) updateActions(); }
+      };
+    });
     $("#modalBody").onclick = e => {
       const button = e.target.closest("[data-conflict-open]");
       if (!button) return;
@@ -625,7 +669,12 @@
       openBooking(button.dataset.conflictOpen);
     };
     $("#eCancel").onclick = closeModal;
-    $("#eSave").onclick = async () => { if (await saveBooking(b.id, draft())) closeModal(); };
+    $("#eSave").onclick = async () => {
+      if (saving || !dirty()) return;
+      saving = true; updateActions();
+      try { if (await saveBooking(b.id, draft())) closeModal(); }
+      finally { saving = false; if (!$("#modal").hidden) updateActions(); }
+    };
     if (identity?.role === "admin") $("#eDelete").onclick = async () => {
       if (!confirm("Permanently delete this booking?")) return;
       try { const r = await S.remove(b.id); closeModal(); await reload(); toast("Booking deleted"); auditWarning(r); } catch (e) { alert(e.message); }

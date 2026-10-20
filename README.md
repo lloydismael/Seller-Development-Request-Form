@@ -123,6 +123,17 @@ remain supported. Existing records need no status migration; the separately depl
 updated for live availability and conflict rules to change. Browser demo scheduling uses the same
 reservation statuses.
 
+## Booking details
+
+Booking details open with a concise status and schedule summary, highlighting the date,
+time, facilitator, participant count and venue. Quick actions approve/reject pending
+requests, complete/cancel approved requests, or reopen closed requests. They require
+confirmation and use the existing conflict-aware save path, including email notification
+triggers. Unsaved schedule edits must be saved or undone before using a quick action.
+Schedule editing, original request answers and activity/reference information remain
+available in collapsed sections. Internal answer IDs and form-version identifiers are
+hidden from the details view; deletion remains administrator-only.
+
 ## Activity attribution
 
 New booking submission events snapshot the validated requestor name with a Self-reported label;

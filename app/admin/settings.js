@@ -100,15 +100,20 @@
     const colorValue = (mode, kind) => theme[mode === "dark" ? kind === "primary" ? "darkPrimary" : "darkBackground" : kind] || colorPresets[mode].teal[kind === "primary" ? 0 : 1];
     const selectedPreset = mode => Object.keys(colorPresets[mode]).find(key => colorPresets[mode][key].every((color, i) => color === colorValue(mode, i ? "background" : "primary").toLowerCase())) || "custom";
     const style = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
+    const backdropOf = (t, auto = t.glassBackdrop) => ["soft", "shapes", "aurora", "grid", "waves", "plain"].includes(auto) ? auto : t.glassEnabled ? "shapes" : "soft";
     const preferences = window.BookingAppearance.preferences();
     const facilitators = [...new Set(Object.values(cfg?.questions || ctx.config?.questions || {}).filter(q => q.field === "facilitator").flatMap(q => (q.choices || []).map(label)))];
     view.innerHTML = `<div class="settings-grid preferences-grid">
       <section class="panel appearance-panel"><p class="eyebrow">Shared experience</p><h2>Appearance</h2><p class="muted">Choose the material for the booking form and admin workspace. Save and publish to make it live for everyone.</p>
         ${!available ? '<p class="alert">Shared appearance requires the authenticated API. Browser preferences below still work.</p>' : ""}
         <fieldset class="material-options" ${available ? "" : "disabled"}><legend>Surface material</legend>
-          ${[["liquid", "Liquid glass", "Clear reflections · light blur"], ["frosted", "Frosted glass", "Soft diffusion · deeper blur"], ["solid", "Solid", "Opaque · no glass effect"]].map(([value, title, detail]) => `<label class="material-option"><input type="radio" name="material" value="${value}" ${style === value ? "checked" : ""}><span class="material-swatch ${value}" aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
+          ${[["liquid", "Liquid glass", "See-through · crisp edges · bright rim"], ["frosted", "Frosted glass", "Milky diffusion · deep blur · soft tint"], ["solid", "Solid", "Flat and opaque · no glass effect"]].map(([value, title, detail]) => `<label class="material-option"><input type="radio" name="material" value="${value}" ${style === value ? "checked" : ""}><span class="material-swatch ${value}" aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
         </fieldset><p class="muted small">Readable surfaces are capped at 20% transparency in light mode and 10% in dark mode. Your browser's accessibility preferences always take priority.</p>
-        <div class="material-preview" aria-label="Material preview"><span class="eyebrow">Preview only</span><h3>Your next learning session</h3><p>Clear details. Comfortable reading. A little more depth.</p><span class="badge">Ready to plan</span></div>
+        <fieldset class="backdrop-options" ${available ? "" : "disabled"}><legend>Page background</legend>
+          ${[["auto", "Match material", "Shapes for glass, glow for solid"], ["soft", "Soft glow", "Gentle accent wash"], ["shapes", "Shapes &amp; lines", "Bold circles and stripes"], ["aurora", "Aurora", "Smooth blended color"], ["grid", "Grid", "Fine technical lines"], ["waves", "Ripples", "Concentric rings"], ["plain", "Plain", "Flat page color"]].map(([value, title, detail]) => `<label class="backdrop-option"><input type="radio" name="backdrop" value="${value}" ${(theme.glassBackdrop || "auto") === value ? "checked" : ""}><span class="backdrop-swatch" data-backdrop="${backdropOf(theme, value)}" ${value === "auto" ? "data-auto" : ""} aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
+        </fieldset>
+        <div class="material-stage" data-backdrop="${backdropOf(theme)}"><div class="material-preview" aria-label="Material preview"><span class="eyebrow">Preview only</span><h3>Your next learning session</h3><p>Clear details. Comfortable reading. A little more depth.</p><span class="badge">Ready to plan</span></div></div>
+        <p class="muted small">The whole workspace previews the selected material and colors while you are on this tab. Save and publish to make it live.</p>
         <h3>Application colors</h3><p class="muted small">Customize light and dark mode independently. Unpublished colors preview only in Settings; use the page switch to check each mode. Other admin tabs and the booking page use the same published colors. Save the draft to keep your edits, then publish to apply them everywhere. Accents are adjusted when needed for readable text and buttons.</p>
         <div class="palette-grid">${["light", "dark"].map(mode => `<fieldset class="palette-editor" ${available ? "" : "disabled"}><legend>${mode === "light" ? "Light" : "Dark"} mode</legend>
           <label for="${mode}Preset">Color preset</label><select id="${mode}Preset" data-palette-preset="${mode}">${Object.keys(colorPresets[mode]).map(key => `<option value="${key}" ${selectedPreset(mode) === key ? "selected" : ""}>${key[0].toUpperCase() + key.slice(1)}</option>`).join("")}<option value="custom" ${selectedPreset(mode) === "custom" ? "selected" : ""}>Custom</option></select>
@@ -145,6 +150,11 @@
       }
       const preview = find(".material-preview");
       preview.dataset.material = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
+      preview.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
+      preview.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
+      const stage = find(".material-stage"), autoSwatch = find(".backdrop-swatch[data-auto]");
+      if (stage) stage.dataset.backdrop = backdropOf(theme);
+      if (autoSwatch) autoSwatch.dataset.backdrop = backdropOf(theme, "auto");
       ["density", "width", "cardStyle"].forEach(key => { preview.dataset[key] = theme[key]; });
       ["light", "dark"].forEach(mode => {
         find(`#${mode}Preset`).value = selectedPreset(mode);
@@ -156,6 +166,12 @@
       });
     }
     function colorChanged() { find("#appearancePreviewPanel").hidden = true; status(); }
+    view.querySelectorAll('[name="backdrop"]').forEach(input => { input.onchange = () => {
+      if (!available || !input.checked) return;
+      theme.glassBackdrop = input.value;
+      find("#appearancePreviewPanel").hidden = true;
+      status();
+    }; });
     view.querySelectorAll("[data-appearance-style]").forEach(input => { input.onchange = () => {
       if (!available) return;
       theme[input.dataset.appearanceStyle] = input.value;

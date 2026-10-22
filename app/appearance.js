@@ -63,7 +63,16 @@
       return { ...value.colors };
     } catch {}
   }
-  let currentTheme = cachedPalette(), previewTheme;
+  let currentTheme = cachedPalette(), previewTheme, publishedMaterial;
+  const backdrops = ["soft", "shapes", "aurora", "grid", "waves", "plain"];
+  function applyMaterial(theme) {
+    root.dataset.glass = theme.glassEnabled ? "enabled" : "disabled";
+    root.dataset.glassStyle = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
+    // "auto" keeps the original gentle wash for solid surfaces and the shapes backdrop for glass.
+    root.dataset.backdrop = backdrops.includes(theme.glassBackdrop) ? theme.glassBackdrop : theme.glassEnabled ? "shapes" : "soft";
+    root.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
+    root.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
+  }
   function applyColors() {
     const theme = previewTheme || currentTheme;
     if (!theme) return;
@@ -81,10 +90,13 @@
     previewColors(theme) {
       previewTheme = { ...theme };
       applyColors();
+      // Surface material previews live across the workspace, alongside the colors.
+      if (typeof theme.glassEnabled === "boolean" && Number.isFinite(theme.glassBlur) && Number.isFinite(theme.glassTransparency)) applyMaterial(theme);
     },
     clearColorPreview() {
       previewTheme = null;
       applyColors();
+      if (publishedMaterial) applyMaterial(publishedMaterial);
     },
     apply(theme, { published = true } = {}) {
       previewTheme = null;
@@ -97,10 +109,8 @@
       root.dataset.density = theme.density || "comfortable";
       root.dataset.width = theme.width || "standard";
       root.dataset.cardStyle = theme.cardStyle || "outlined";
-      root.dataset.glass = theme.glassEnabled ? "enabled" : "disabled";
-      root.dataset.glassStyle = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
-      root.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
-      root.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
+      publishedMaterial = { glassEnabled:theme.glassEnabled, glassTransparency:theme.glassTransparency, glassBlur:theme.glassBlur, glassBackdrop:theme.glassBackdrop };
+      applyMaterial(theme);
     },
     preferences: () => ({ reduceMotion:preferences.reduceMotion === true, reduceTransparency:preferences.reduceTransparency === true }),
     setPreference(name, value) {

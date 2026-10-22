@@ -29,6 +29,23 @@ test("appearance applies all materials without changing accessibility preference
     assert.equal(s.root.dataset.reduceTransparency, "true");
   }
 });
+test("page background resolves auto by material and falls back safely for unknown values", () => {
+  const s = setup();
+  for (const [theme, expected] of [
+    [{ glassEnabled:true, glassBlur:4, glassTransparency:20 }, "shapes"],
+    [{ glassEnabled:false, glassBlur:12, glassTransparency:20 }, "soft"],
+    [{ glassEnabled:false, glassBlur:12, glassTransparency:20, glassBackdrop:"aurora" }, "aurora"],
+    [{ glassEnabled:true, glassBlur:16, glassTransparency:20, glassBackdrop:"plain" }, "plain"],
+    [{ glassEnabled:true, glassBlur:16, glassTransparency:20, glassBackdrop:"x;color:red" }, "shapes"]
+  ]) {
+    s.api.apply(theme);
+    assert.equal(s.root.dataset.backdrop, expected);
+  }
+  s.api.previewColors({ glassEnabled:false, glassBlur:12, glassTransparency:20, glassBackdrop:"grid" });
+  assert.equal(s.root.dataset.backdrop, "grid");
+  s.api.clearColorPreview();
+  assert.equal(s.root.dataset.backdrop, "shapes");
+});
 test("shared layout applies on both modes, ignores draft mutations and resets legacy defaults", () => {
   const s = setup();
   for (const width of ["narrow", "standard", "wide"]) for (const density of ["compact", "comfortable"]) for (const cardStyle of ["outlined", "elevated", "flat"]) {

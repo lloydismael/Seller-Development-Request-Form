@@ -15,7 +15,7 @@ function setup(positional = false, mode = "api") {
       Object.values(nodes).forEach(node => { node.isConnected = false; });
       html = value;
       const colors = ["light", "dark"].flatMap(mode => [`${mode}Preset`, `${mode}PalettePreview`, ...["primary", "background"].flatMap(kind => [`${mode}${kind}`, `${mode}${kind}Value`])]);
-      nodes = Object.fromEntries([...colors, "appearancedensity", "appearancewidth", "appearancecardStyle", "appearanceStatus", "saveAppearance", "publishAppearance", "previewAppearance", "reloadAppearance", "appearancePreviewPanel", "iframe", ".material-preview", "liquid", "frosted", "solid", "reduceMotion", "reduceTransparency", "bookings"].map(id => [id, { disabled:false, isConnected:true, checked:false, value:id, style:{ setProperty() {} }, dataset:{ preference:id, settingsNav:id }, scrollIntoView() {} }]));
+      nodes = Object.fromEntries([...colors, "appearancedensity", "appearancewidth", "appearancecardStyle", "appearanceStatus", "saveAppearance", "publishAppearance", "previewAppearance", "reloadAppearance", "appearancePreviewPanel", "iframe", ".material-preview", "liquid", "frosted", "solid", "backdrop-auto", "backdrop-aurora", "reduceMotion", "reduceTransparency", "bookings"].map(id => [id, { disabled:false, isConnected:true, checked:false, value:id, style:{ setProperty() {} }, dataset:{ preference:id, settingsNav:id }, scrollIntoView() {} }]));
       for (const key of ["density", "width", "cardStyle"]) nodes[`appearance${key}`].dataset.appearanceStyle = key;
       for (const mode of ["light", "dark"]) {
         nodes[`${mode}Preset`].dataset.palettePreset = mode;
@@ -25,7 +25,7 @@ function setup(positional = false, mode = "api") {
     get innerHTML() { return html; },
     querySelector(selector) { return nodes[selector.replace(/^#/, "")]; },
     querySelectorAll(selector) {
-      const ids = selector === '[name="material"]' ? ["liquid", "frosted", "solid"] : selector === "[data-preference]" ? ["reduceMotion", "reduceTransparency"] : selector === "[data-settings-nav]" ? ["bookings"] : Object.keys(nodes);
+      const ids = selector === '[name="material"]' ? ["liquid", "frosted", "solid"] : selector === '[name="backdrop"]' ? ["backdrop-auto", "backdrop-aurora"] : selector === "[data-preference]" ? ["reduceMotion", "reduceTransparency"] : selector === "[data-settings-nav]" ? ["bookings"] : Object.keys(nodes);
       if (selector === "[data-appearance-style]") return [nodes.appearancedensity, nodes.appearancewidth, nodes.appearancecardStyle];
       if (selector === "[data-palette-preset]") return [nodes.lightPreset, nodes.darkPreset];
       if (selector === "[data-color-kind]") return [nodes.lightprimary, nodes.lightbackground, nodes.darkprimary, nodes.darkbackground];
@@ -174,6 +174,18 @@ test("leaving Settings restores the same published tokens as booking in either m
   assert.equal(s.calls.at(-1)[0], "publish");
   s.window.SettingsUI.deactivate();
   assert.equal(values["--ui-bg"], published.darkBackground);
+});
+test("Settings saves a page background choice and previews it across the workspace", async () => {
+  const s = setup();
+  await s.window.SettingsUI.render("settings", s.view, s.ctx);
+  assert.match(s.view.innerHTML, /name="backdrop" value="auto" checked/);
+  assert.equal((s.view.innerHTML.match(/name="backdrop"/g) || []).length, 7);
+  const aurora = s.node("backdrop-aurora"); aurora.value = "aurora"; aurora.checked = true; aurora.onchange();
+  assert.equal(s.previews.at(-1).glassBackdrop, "aurora");
+  assert.equal(s.node("publishAppearance").disabled, true);
+  assert.equal(s.ctx.config.theme.glassBackdrop, "auto");
+  s.node("saveAppearance").onclick(); await flush();
+  assert.equal(s.calls[0][1].config.theme.glassBackdrop, "aurora");
 });
 for (const positional of [false, true]) {
   test(`Settings saves presets before publishing with ${positional ? "positional" : "object"} transport`, async () => {

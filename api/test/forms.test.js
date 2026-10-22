@@ -36,10 +36,15 @@ test("glass settings normalize legacy themes without mutation and reject invalid
     ["glassEnabled", [0, 1, "true", null, undefined]],
     ["glassTransparency", [-1, 41, "20", null, undefined, NaN, Infinity]],
     ["glassBlur", [-1, 21, "12", null, undefined, NaN, Infinity]],
+    ["glassBackdrop", ["url(x)", "Shapes", "", 1, null]],
     ["glassUnknown", [true]]
   ]) for (const value of invalid) {
     const c = config(); c.theme[key] = value;
     assert.throws(() => schema.validate(c), { statusCode:400 }, `${key}: ${value}`);
+  }
+  for (const backdrop of schema.BACKDROPS) {
+    const c = config(); c.theme.glassBackdrop = backdrop;
+    assert.equal(schema.validate(c).theme.glassBackdrop, backdrop);
   }
   const browser = { window:{} };
   vm.runInNewContext(fs.readFileSync(require.resolve("../../app/form-schema"), "utf8"), browser);

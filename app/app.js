@@ -253,7 +253,7 @@
     nav.hidden = !loaded || i < 0;
     nav.dataset.last = String(i === path.length - 1);
     document.getElementById("backBtn").disabled = i <= 0;
-    document.getElementById("nextBtn").textContent = returnToReview || i === path.length - 1 ? "Review" : "Next";
+    document.getElementById("nextBtn").textContent = "Next";
     const lengths = routeLengths(), total = Math.max(...lengths);
     document.getElementById("deckStep").textContent = `Question ${i + 1}${lengths.length === 1 ? ` of ${total}` : ""}`;
   }

@@ -80,9 +80,11 @@ test("builder renders numbered labels, concise hints and persistent native discl
     draft:{ revision:2, version:1 }, esc:value => String(value ?? ""), label:value => typeof value === "string" ? value : value.label,
     option:() => "", select:() => "", protectedQuestion:() => true, destinationOptions:() => "", typeNames:{ choice:"Single choice" },
     openPanels:new Set(["routing", "settings"]), view:{} };
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf("  function linear("), source.indexOf("  function builder(")), context);
   const start = source.indexOf('    view.innerHTML = `<div class="settings-heading builder-heading"');
   const end = source.indexOf("    const find =", start);
-  vm.runInNewContext(source.slice(start, end), context);
+  vm.runInContext(source.slice(start, end), context);
   const html = context.view.innerHTML;
   assert.match(html, /1\. /);
   assert.match(html, /Single choice/);
@@ -92,4 +94,26 @@ test("builder renders numbered labels, concise hints and persistent native discl
   assert.match(html, /data-builder-panel="sections" >/);
   assert.match(html, /id="draftValidation" role="alert"/);
   assert.match(html, /Save a draft, preview it, then publish/);
+  assert.match(html, /id="builderSteps" data-state="saved"/);
+  assert.match(html, /id="livePreview"/);
+  assert.match(html, /id="flowMap"/);
+  assert.match(html, /name="answerType" data-prop="type" value="choice" checked/);
+});
+
+test("live preview and flow map describe the selected question visually", () => {
+  const cfg = schema.validate(defaults);
+  const context = { schema, cfg, clone, esc:value => String(value ?? ""), label:value => typeof value === "string" ? value : value.label };
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf("  function linear("), source.indexOf("  function builder(")), context);
+  const choice = { title:"Pick one", type:"choice", required:true, help:"Choose wisely", choices:["A", "B", "C", "D", "E", "F", "G"], allowOther:true };
+  const html = context.previewHtml(choice);
+  assert.match(html, /Pick one<span class="qp-req"/);
+  assert.match(html, /Choose wisely/);
+  assert.match(html, /Other…/);
+  assert.match(html, /\+ 2 more options/);
+  assert.match(context.previewHtml({ title:"T", type:"multi", choices:["A"], min:1, max:2 }), /at least 1 and at most 2/);
+  const id = cfg.start, flow = context.flowHtml(cfg, id);
+  assert.match(flow, /Form starts here/);
+  assert.match(flow, /flow-node current/);
+  assert.match(flow, new RegExp(cfg.questions[cfg.questions[id].next].title.slice(0, 8)));
 });

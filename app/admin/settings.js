@@ -389,39 +389,75 @@
     [order[at], order[at + direction]] = [order[at + direction], order[at]];
     return id;
   }
+  /* Visual helpers for the form builder: icons, a requester-facing preview and a flow map. */
+  const typeIcons = { text:"Aa", textarea:"¶", email:"@", number:"#", date:"▦", choice:"◉", multi:"☑" };
+  const typeHints = { text:"One line of text", textarea:"A longer answer", email:"An email address", number:"A number", date:"Pick a date", choice:"Pick one option", multi:"Pick several" };
+  const themeLabels = { density:["Spacing", { compact:"Compact", comfortable:"Comfortable" }], width:["Form width", { narrow:"Narrow", standard:"Standard", wide:"Wide" }], cardStyle:["Card style", { outlined:"Outlined", elevated:"Raised", flat:"Flat" }] };
+  function previewHtml(q, lines) {
+    const choices = lines || (q.choices || []).map(label), shown = choices.slice(0, 5), more = choices.length - shown.length;
+    const head = `<div class="qp-label">${esc(q.title || "Untitled question")}${q.required ? '<span class="qp-req" title="Required"> *</span>' : ""}</div>${q.help ? `<div class="qp-help">${esc(q.help)}</div>` : ""}`;
+    let body;
+    if (["choice", "multi"].includes(q.type)) {
+      const mark = q.type === "choice" ? "qp-radio" : "qp-check";
+      body = `<ul class="qp-options">${shown.map(c => `<li><i class="${mark}"></i>${esc(c)}</li>`).join("")}${q.type === "choice" && q.allowOther ? `<li><i class="${mark}"></i><em>Other…</em></li>` : ""}${more > 0 ? `<li class="qp-more">+ ${more} more option${more === 1 ? "" : "s"}</li>` : ""}</ul>`;
+    } else if (q.type === "date") body = '<div class="qp-input"><span>dd / mm / yyyy</span><b aria-hidden="true">▦</b></div>';
+    else body = `<div class="qp-input ${q.type === "textarea" ? "qp-tall" : ""}"><span>${esc(q.placeholder || "")}</span></div>`;
+    const limit = q.min !== undefined || q.max !== undefined ? `<div class="qp-help">${q.type === "multi" ? "Choose" : "Value"} ${q.min !== undefined ? `at least ${esc(q.min)}` : ""}${q.min !== undefined && q.max !== undefined ? " and " : ""}${q.max !== undefined ? `at most ${esc(q.max)}` : ""}</div>` : "";
+    return head + body + (["number", "multi"].includes(q.type) ? limit : "");
+  }
+  function flowHtml(config, id) {
+    const q = config.questions[id], name = key => `${config.order.indexOf(key) + 1}. ${config.questions[key].title}`;
+    const node = (text, cls = "") => `<div class="flow-node ${cls}">${esc(text)}</div>`;
+    const from = incoming(config, id).map(edge => edge.key).filter((key, i, all) => all.indexOf(key) === i);
+    const ins = [...(config.start === id ? [node("Form starts here", "flow-edge")] : []), ...from.slice(0, 3).map(key => node(name(key))), ...(from.length > 3 ? [node(`+ ${from.length - 3} more`, "flow-edge")] : [])];
+    const outs = (q.choices || []).filter(c => typeof c === "object" && c.goto).map(c => `<div class="flow-out"><span class="flow-if">If “${esc(label(c))}”</span>${node(name(c.goto))}</div>`);
+    outs.push(`<div class="flow-out"><span class="flow-if">${outs.length ? "Any other answer" : "Then"}</span>${q.next ? node(name(q.next)) : node("End of form", "flow-edge")}</div>`);
+    return `<div class="flow-col">${ins.join("") || node("Not reached by any question", "flow-edge")}</div><span class="flow-arrow" aria-hidden="true">→</span>${node(name(id), "current")}<span class="flow-arrow" aria-hidden="true">→</span><div class="flow-col">${outs.join("")}</div>`;
+  }
   function builder(view, ctx) {
     const cfg = draft.config;
     if (!cfg.questions[selected]) selected = cfg.start;
     const q = cfg.questions[selected], essential = protectedQuestion(q), fixedType = ["date", "facilitator", "time"].includes(selected) || ["participants", "requesterEmail"].includes(q.field);
     const openPanels = new Set([...view.querySelectorAll("details[open][data-builder-panel]")].map(el => el.dataset.builderPanel));
-    view.innerHTML = `<div class="settings-heading builder-heading"><div><p class="muted">Save a draft, preview it, then publish to make it live.</p></div>
-      <div class="settings-actions"><button type="button" class="btn" id="reloadDraft">Reload draft</button><button type="button" class="btn" id="saveDraft">Save draft</button><button type="button" class="btn" id="previewDraft">Preview</button><button type="button" class="btn primary" id="publishForm">Publish</button></div></div>
+    view.innerHTML = `<div class="settings-heading builder-heading"><div><p class="muted">Pick a question on the left, change it and watch the preview. Save a draft, preview it, then publish to make it live.</p></div>
+      <button type="button" class="btn ghost sm" id="reloadDraft" title="Discard unsaved edits and load the saved draft">↺ Reload draft</button></div>
+      <ol class="builder-steps" id="builderSteps" data-state="saved" aria-label="Publishing steps">
+        <li data-step="edit"><span class="bstep-num">1</span><span>Edit</span></li>
+        <li data-step="save"><button type="button" class="btn" id="saveDraft"><span class="bstep-num">2</span>Save draft</button></li>
+        <li data-step="preview"><button type="button" class="btn" id="previewDraft"><span class="bstep-num">3</span>Preview</button></li>
+        <li data-step="publish"><button type="button" class="btn primary" id="publishForm"><span class="bstep-num">4</span>Publish</button></li>
+      </ol>
       <div class="builder-status" role="status" aria-live="polite" id="builderStatus"></div>
       <div class="alert settings-validation" id="draftValidation" role="alert" hidden></div>
       <div class="builder-layout">
-        <aside class="panel question-list"><h3>Questions <span class="muted small">${cfg.order.length}</span></h3><ol>${cfg.order.map((id, i) => `<li><button type="button" class="question-pick ${id === selected ? "selected" : ""}" data-question="${esc(id)}" ${id === selected ? 'aria-current="true"' : ""}><span>${i + 1}. ${esc(cfg.questions[id].title)}</span><small>${esc(typeNames[cfg.questions[id].type] || cfg.questions[id].type)}${protectedQuestion(cfg.questions[id]) ? " · Required" : ""}${cfg.start === id ? " · First" : ""}</small></button></li>`).join("")}</ol>
-          <button type="button" class="btn" id="addQuestion">Add question</button></aside>
-        <section class="panel question-editor"><h3>Edit question</h3><div class="settings-actions inspector-actions"><button type="button" class="btn" id="moveUp">Move up</button><button type="button" class="btn" id="moveDown">Move down</button><button type="button" class="btn" id="duplicateQuestion">Duplicate</button><button type="button" class="btn danger" id="removeQuestion" ${essential ? "disabled" : ""}>Remove</button></div>
-          ${essential ? '<p class="muted small">Required booking field. Cannot be removed or made optional.</p>' : ""}
+        <aside class="panel question-list"><h3>Questions <span class="muted small">${cfg.order.length}</span></h3><ol>${cfg.order.map((id, i) => { const item = cfg.questions[id], section = cfg.sections.find(s => s.id === item.section); return `<li><button type="button" class="question-pick ${id === selected ? "selected" : ""}" data-question="${esc(id)}" ${id === selected ? 'aria-current="true"' : ""}><b class="type-icon t-${esc(item.type)}" aria-hidden="true">${esc(typeIcons[item.type] || "?")}</b><div class="pick-body"><span>${i + 1}. ${esc(item.title)}</span><small>${esc(typeNames[item.type] || item.type)}${protectedQuestion(item) ? '<em class="chip-tag">Required</em>' : ""}${cfg.start === id ? '<em class="chip-tag">First</em>' : ""}${!linear(item) ? '<em class="chip-tag">Branches</em>' : ""}${section ? `<em class="chip-tag chip-section">${esc(section.title)}</em>` : ""}</small></div></button></li>`; }).join("")}</ol>
+          <button type="button" class="btn" id="addQuestion">＋ Add question</button></aside>
+        <section class="panel question-editor"><div class="editor-head"><b class="type-icon t-${esc(q.type)}" aria-hidden="true">${esc(typeIcons[q.type] || "?")}</b><div><h3>Edit question</h3><p class="muted small">Question ${cfg.order.indexOf(selected) + 1} of ${cfg.order.length}</p></div></div>
+          <div class="live-preview"><p class="live-preview-title">What requesters will see</p><div id="livePreview">${previewHtml(q)}</div></div>
+          <div class="settings-actions inspector-actions"><button type="button" class="btn" id="moveUp">↑ Move up</button><button type="button" class="btn" id="moveDown">↓ Move down</button><button type="button" class="btn" id="duplicateQuestion">⧉ Duplicate</button><button type="button" class="btn danger" id="removeQuestion" ${essential ? "disabled" : ""}>✕ Remove</button></div>
+          ${essential ? '<p class="muted small">🔒 Required booking field. Cannot be removed or made optional.</p>' : ""}
           <form class="settings-form" id="inspector">
-            <label>Label<input data-prop="title" value="${esc(q.title)}" maxlength="200" required></label>
-            <div class="form-grid"><label>Answer type<select data-prop="type" ${fixedType ? "disabled" : ""}>${schema.TYPES.filter(t => !q.field || t !== "multi" || q.field === "topic").map(t => option(t, typeNames[t] || t, q.type)).join("")}</select></label>
-              <label>Section<select data-prop="section">${option("", "No section", q.section || "")}${cfg.sections.map(s => option(s.id, s.title, q.section)).join("")}</select></label></div>
+            <label>Question label<input data-prop="title" value="${esc(q.title)}" maxlength="200" required></label>
+            <fieldset class="type-picker" ${fixedType ? "disabled" : ""}><legend>Answer type${fixedType ? " (fixed for this field)" : ""}</legend><div class="type-tiles">${schema.TYPES.filter(t => !q.field || t !== "multi" || q.field === "topic").map(t => `<label class="type-tile t-${t}"><input type="radio" name="answerType" data-prop="type" value="${t}" ${t === q.type ? "checked" : ""}><b class="type-icon" aria-hidden="true">${typeIcons[t]}</b><span>${esc(typeNames[t] || t)}</span><small>${typeHints[t]}</small></label>`).join("")}</div></fieldset>
             <label class="check-label"><input type="checkbox" data-prop="required" ${q.required ? "checked" : ""} ${essential ? "disabled" : ""}>Required answer</label>
-            <label>Help text<textarea data-prop="help" maxlength="1000">${esc(q.help)}</textarea></label>
-            <label>Placeholder<input data-prop="placeholder" value="${esc(q.placeholder)}" maxlength="200"></label>
-            <details class="builder-details" data-builder-panel="routing" ${openPanels.has("routing") ? "open" : ""}><summary>Question routing</summary><div class="settings-form"><p class="muted small">Choose what comes next. Choice routes override this.</p><label>Next question<select data-prop="next">${destinationOptions(cfg, q.next, selected)}</select></label></div></details>
+            <label>Help text <span class="muted small">(shown under the label)</span><textarea data-prop="help" maxlength="1000" rows="2">${esc(q.help)}</textarea></label>
+            ${["choice", "multi"].includes(q.type) ? `<div class="option-box"><label>Answer options <span class="muted small">(one per line)</span><textarea id="choiceLines" rows="6" aria-describedby="choiceHelp">${esc(q.choices.map(label).join("\n"))}</textarea></label><p id="choiceHelp" class="muted small">The preview above updates as you type. Press Apply options to keep your changes.</p>
+              <button type="button" class="btn primary" id="applyChoices">Apply options</button>
+              ${q.type === "choice" ? `<label class="check-label"><input type="checkbox" data-prop="allowOther" ${q.allowOther ? "checked" : ""} ${["facilitator", "time"].includes(selected) ? "disabled" : ""}>Let people type another answer</label>` : ""}</div>` : ""}
             ${["number", "multi"].includes(q.type) ? `<div class="form-grid">${["min", "max"].map(k => `<label>${k === "min" ? "Minimum" : "Maximum"}${q.type === "multi" ? " selections" : " value"}<input type="number" step="1" data-prop="${k}" value="${esc(q[k])}" min="${q.type === "multi" ? 1 : -1000000}" max="${q.type === "multi" ? q.choices.length : 1000000}"></label>`).join("")}</div>` : ""}
-            ${["choice", "multi"].includes(q.type) ? `<label>Choices (one label per line)<textarea id="choiceLines" rows="6" aria-describedby="choiceHelp">${esc(q.choices.map(label).join("\n"))}</textarea></label><p id="choiceHelp" class="muted small">One option per line. Apply changes before saving.</p>
-              <button type="button" class="btn" id="applyChoices">Apply choices</button>
-              ${q.type === "choice" ? `<label class="check-label"><input type="checkbox" data-prop="allowOther" ${q.allowOther ? "checked" : ""} ${["facilitator", "time"].includes(selected) ? "disabled" : ""}>Allow another answer</label><details class="builder-details" data-builder-panel="branches" ${openPanels.has("branches") ? "open" : ""}><summary>Choice routing</summary><p class="muted small">Send an answer to a specific question, or use the next question.</p><div class="branch-list">${q.choices.map((c, i) => `<label>${esc(label(c))}<select data-branch="${i}">${destinationOptions(cfg, typeof c === "object" ? c.goto : "", selected, true)}</select></label>`).join("")}</div></details>` : ""}` : ""}
+            <details class="builder-details" data-builder-panel="more" ${openPanels.has("more") ? "open" : ""}><summary>More options · section${["text", "textarea", "email", "number"].includes(q.type) ? " &amp; placeholder" : ""}</summary><div class="settings-form">
+              <label>Section<select data-prop="section">${option("", "No section", q.section || "")}${cfg.sections.map(s => option(s.id, s.title, q.section)).join("")}</select></label>
+              ${["text", "textarea", "email", "number"].includes(q.type) ? `<label>Placeholder <span class="muted small">(faint hint inside the box)</span><input data-prop="placeholder" value="${esc(q.placeholder)}" maxlength="200"></label>` : ""}</div></details>
+            <details class="builder-details" data-builder-panel="routing" ${openPanels.has("routing") ? "open" : ""}><summary>Question flow · what comes next</summary><div class="settings-form"><div class="flow" id="flowMap" aria-label="Question flow">${flowHtml(cfg, selected)}</div><p class="muted small">After this question, show:</p><label>Next question<select data-prop="next">${destinationOptions(cfg, q.next, selected)}</select></label>
+              ${q.type === "choice" ? `<p class="muted small">Or send a specific answer somewhere else:</p><div class="branch-list">${q.choices.map((c, i) => `<label>If the answer is “${esc(label(c))}”<select data-branch="${i}">${destinationOptions(cfg, typeof c === "object" ? c.goto : "", selected, true)}</select></label>`).join("")}</div>` : ""}</div></details>
           </form>
         </section>
       </div>
       <details class="panel builder-details" data-builder-panel="settings" ${openPanels.has("settings") ? "open" : ""}><summary>Form settings</summary><div class="form-grid"><label>Form title<input id="formTitle" value="${esc(cfg.title)}" maxlength="200" required></label><label>First question<select id="formStart">${cfg.order.map((id, i) => option(id, `${i + 1}. ${cfg.questions[id].title}`, cfg.start)).join("")}</select></label></div>
-        <h3>Appearance</h3><div class="theme-grid">${["primary", "background"].map(k => `<label>${k === "primary" ? "Light accent color" : "Light background color"}<input type="color" data-theme="${k}" value="${esc(cfg.theme[k])}"></label>`).join("")}
-          ${[["density", ["compact", "comfortable"]], ["width", ["narrow", "standard", "wide"]], ["cardStyle", ["outlined", "elevated", "flat"]]].map(([key, values]) => `<label>${esc(key)}<select data-theme="${key}">${select(values, cfg.theme[key])}</select></label>`).join("")}</div>
-        <p class="muted small">Manage dark colors and light/dark presets in Settings.</p>
+        <h3>Look &amp; feel</h3><div class="theme-layout"><div class="theme-controls"><div class="theme-grid">${["primary", "background"].map(k => `<label>${k === "primary" ? "Accent color" : "Background color"}<input type="color" data-theme="${k}" value="${esc(cfg.theme[k])}"></label>`).join("")}
+          ${Object.entries(themeLabels).map(([key, [title, names]]) => `<label>${title}<select data-theme="${key}">${Object.entries(names).map(([value, text]) => option(value, text, cfg.theme[key])).join("")}</select></label>`).join("")}</div></div>
+          <div class="theme-sample" id="themeSample" data-density="${esc(cfg.theme.density)}" data-width="${esc(cfg.theme.width)}" data-card="${esc(cfg.theme.cardStyle)}" style="--s-primary:${esc(cfg.theme.primary)};--s-bg:${esc(cfg.theme.background)}" aria-hidden="true"><div class="ts-bar"></div><div class="ts-body"><b>Sample question</b><div class="ts-input"></div><span class="ts-btn">Submit</span></div></div></div>
+        <p class="muted small">Light-mode colors. Manage dark colors and light/dark presets in Settings.</p>
         <h3>Subtle frosted glass</h3>
         <label class="check-label"><input type="checkbox" data-theme="glassEnabled" ${cfg.theme.glassEnabled ? "checked" : ""}>Enable glass surfaces</label>
         <p class="muted small" id="glassHelp">Transparency is capped at 20% in light mode and 10% in dark mode. Solid surfaces are used when glass is unsupported or reduced transparency is preferred.</p>
@@ -438,7 +474,8 @@
       try { schema.validate(cfg); find("#draftValidation").hidden = true; }
       catch (err) { valid = false; find("#draftValidation").textContent = err.message; find("#draftValidation").hidden = false; }
       const changed = dirty();
-      find("#builderStatus").textContent = !valid ? "Check the highlighted form error." : changed ? "Unsaved changes — save to preview." : "Draft saved — ready to preview or publish.";
+      find("#builderStatus").textContent = !valid ? "⚠ Check the highlighted form error." : changed ? "✎ Unsaved changes — press “Save draft” (step 2) to continue." : previewOpen ? "👁 Previewing the saved draft below. Happy with it? Press Publish (step 4)." : "✓ Draft saved — preview it or publish it.";
+      find("#builderSteps")?.setAttribute("data-state", !valid ? "error" : changed ? "edit" : previewOpen ? "preview" : "saved");
       find("#saveDraft").title = !valid ? "Fix the form error first" : !changed ? "No changes to save" : "Save without changing the live form";
       ["#previewDraft", "#publishForm"].forEach(s => { find(s).title = !valid ? "Fix the form error first" : changed ? "Save your changes first" : ""; });
       find("#publishForm").disabled = changed || !valid;
@@ -453,7 +490,17 @@
       previewOpen = false;
       const picked = [...view.querySelectorAll("[data-question]")].find(btn => btn.dataset.question === selected);
       if (picked) picked.querySelector("span").textContent = `${cfg.order.indexOf(selected) + 1}. ${q.title}`;
+      refreshVisuals();
       refreshStructureActions(); status();
+    }
+    function refreshVisuals(lines) {
+      const live = find("#livePreview"), flow = find("#flowMap"), sample = find("#themeSample");
+      if (live) live.innerHTML = previewHtml(q, lines);
+      if (flow) flow.innerHTML = flowHtml(cfg, selected);
+      if (sample) {
+        sample.style.setProperty("--s-primary", cfg.theme.primary); sample.style.setProperty("--s-bg", cfg.theme.background);
+        Object.assign(sample.dataset, { density:cfg.theme.density, width:cfg.theme.width, card:cfg.theme.cardStyle });
+      }
     }
     function refreshStructureActions() {
       [["#moveUp", -1], ["#moveDown", 1]].forEach(([selector, direction]) => {
@@ -478,8 +525,9 @@
     function pendingChoices() {
       const lines = find("#choiceLines");
       choicePending = !!lines && lines.value !== q.choices.map(label).join("\n");
+      if (lines) refreshVisuals(lines.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean));
       if (choicePending) {
-        profileDirty = true; find("#builderStatus").textContent = "Apply choices before saving.";
+        profileDirty = true; find("#builderStatus").textContent = "Press “Apply options” to keep your option changes before saving.";
         ["#saveDraft", "#publishForm", "#previewDraft"].forEach(s => { find(s).disabled = true; find(s).title = "Apply choices first"; });
       } else { profileDirty = false; status(); }
       refreshStructureActions();
@@ -491,9 +539,10 @@
       input.oninput = () => {
         const key = input.dataset.prop, value = input.type === "checkbox" ? input.checked : input.value;
         if (key === "type") {
-          if (!guardChoices()) { input.value = q.type; return; }
+          const restore = () => view.querySelectorAll('[data-prop="type"]').forEach(radio => { radio.checked = radio.value === q.type; });
+          if (!guardChoices()) { restore(); return; }
           const branching = !linear(q);
-          if ((branching || q.choices) && !confirm("Change this question type? Incompatible choices, bounds and branch routes will be removed. The resulting draft must still validate.")) { input.value = q.type; return; }
+          if ((branching || q.choices) && !confirm("Change this question type? Incompatible choices, bounds and branch routes will be removed. The resulting draft must still validate.")) { restore(); return; }
           q.type = value;
           if (!["choice", "multi"].includes(value)) { delete q.choices; delete q.allowOther; }
           else {

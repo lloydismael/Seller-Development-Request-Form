@@ -37,6 +37,12 @@ test("glass settings normalize legacy themes without mutation and reject invalid
     ["glassTransparency", [-1, 41, "20", null, undefined, NaN, Infinity]],
     ["glassBlur", [-1, 21, "12", null, undefined, NaN, Infinity]],
     ["glassBackdrop", ["url(x)", "Shapes", "", 1, null]],
+    ["glassCustomA", ["red", "#fff", "#12345g", 1, null]],
+    ["glassCustomB", ["javascript:1", "#12345", null]],
+    ["glassCustomAngle", [-1, 361, "90", NaN, null]],
+    ["glassCustomDim", [69, 96, "85", NaN, null]],
+    ["glassCustomPattern", ["checker", "", "Grid", null]],
+    ["glassCustomImage", ["http://example.com/a.jpg", "//evil.test/a.jpg", "javascript:alert(1)", "data:image/png;base64,AAAA", "https://e.test/a.jpg\")", "https://e.test/a b.jpg", "https://e.test/a'.jpg", "https://e.test/(x).jpg", "https://e.test/" + "a".repeat(500), 5, null]],
     ["glassUnknown", [true]]
   ]) for (const value of invalid) {
     const c = config(); c.theme[key] = value;
@@ -45,6 +51,10 @@ test("glass settings normalize legacy themes without mutation and reject invalid
   for (const backdrop of schema.BACKDROPS) {
     const c = config(); c.theme.glassBackdrop = backdrop;
     assert.equal(schema.validate(c).theme.glassBackdrop, backdrop);
+  }
+  for (const image of ["", "https://cdn.example.com/bg.jpg?w=1920&q=80", "/assets/background.webp"]) {
+    const c = config(); Object.assign(c.theme, { glassBackdrop:"custom", glassCustomImage:image, glassCustomPattern:"dots", glassCustomAngle:360, glassCustomDim:70 });
+    assert.equal(schema.validate(c).theme.glassCustomImage, image);
   }
   const browser = { window:{} };
   vm.runInNewContext(fs.readFileSync(require.resolve("../../app/form-schema"), "utf8"), browser);

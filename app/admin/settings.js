@@ -100,7 +100,8 @@
     const colorValue = (mode, kind) => theme[mode === "dark" ? kind === "primary" ? "darkPrimary" : "darkBackground" : kind] || colorPresets[mode].teal[kind === "primary" ? 0 : 1];
     const selectedPreset = mode => Object.keys(colorPresets[mode]).find(key => colorPresets[mode][key].every((color, i) => color === colorValue(mode, i ? "background" : "primary").toLowerCase())) || "custom";
     const style = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
-    const backdropOf = (t, auto = t.glassBackdrop) => ["soft", "shapes", "aurora", "grid", "waves", "plain"].includes(auto) ? auto : t.glassEnabled ? "shapes" : "soft";
+    const backdropOf = (t, auto = t.glassBackdrop) => ["soft", "shapes", "aurora", "grid", "waves", "corporate", "executive", "plain", "custom"].includes(auto) ? auto : t.glassEnabled ? "shapes" : "soft";
+    const custom = key => theme[key] ?? schema.GLASS_DEFAULTS[key];
     const preferences = window.BookingAppearance.preferences();
     const facilitators = [...new Set(Object.values(cfg?.questions || ctx.config?.questions || {}).filter(q => q.field === "facilitator").flatMap(q => (q.choices || []).map(label)))];
     view.innerHTML = `<div class="settings-grid preferences-grid">
@@ -110,7 +111,17 @@
           ${[["liquid", "Liquid glass", "See-through · crisp edges · bright rim"], ["frosted", "Frosted glass", "Milky diffusion · deep blur · soft tint"], ["solid", "Solid", "Flat and opaque · no glass effect"]].map(([value, title, detail]) => `<label class="material-option"><input type="radio" name="material" value="${value}" ${style === value ? "checked" : ""}><span class="material-swatch ${value}" aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
         </fieldset><p class="muted small">Readable surfaces are capped at 20% transparency in light mode and 10% in dark mode. Your browser's accessibility preferences always take priority.</p>
         <fieldset class="backdrop-options" ${available ? "" : "disabled"}><legend>Page background</legend>
-          ${[["auto", "Match material", "Shapes for glass, glow for solid"], ["soft", "Soft glow", "Gentle accent wash"], ["shapes", "Shapes &amp; lines", "Bold circles and stripes"], ["aurora", "Aurora", "Smooth blended color"], ["grid", "Grid", "Fine technical lines"], ["waves", "Ripples", "Concentric rings"], ["plain", "Plain", "Flat page color"]].map(([value, title, detail]) => `<label class="backdrop-option"><input type="radio" name="backdrop" value="${value}" ${(theme.glassBackdrop || "auto") === value ? "checked" : ""}><span class="backdrop-swatch" data-backdrop="${backdropOf(theme, value)}" ${value === "auto" ? "data-auto" : ""} aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
+          ${[["auto", "Match material", "Shapes for glass, glow for solid"], ["soft", "Soft glow", "Gentle accent wash"], ["shapes", "Shapes &amp; lines", "Bold circles and stripes"], ["aurora", "Aurora", "Smooth blended color"], ["grid", "Grid", "Fine technical lines"], ["waves", "Ripples", "Concentric rings"], ["corporate", "Corporate", "Accent rule · fine dot matrix"], ["executive", "Executive", "Soft diagonal light · hairlines"], ["plain", "Plain", "Flat page color"], ["custom", "Custom", "Your colors, pattern or image"]].map(([value, title, detail]) => `<label class="backdrop-option"><input type="radio" name="backdrop" value="${value}" ${(theme.glassBackdrop || "auto") === value ? "checked" : ""}><span class="backdrop-swatch" data-backdrop="${backdropOf(theme, value)}" ${value === "auto" ? "data-auto" : ""} aria-hidden="true"></span><strong>${title}</strong><span class="muted small">${detail}</span></label>`).join("")}
+        </fieldset>
+        <fieldset class="layout-editor backdrop-custom" ${available ? "" : "disabled"}><legend>Custom background</legend>
+          <p class="muted small backdrop-custom-note">Changing any control below switches the page background to Custom. Colors are blended into your page color and images are dimmed, so text always stays readable. Images must use HTTPS or a same-site path, and visitors' browsers will request them from that host.</p>
+          <label for="backdropCustomA">Color A<input type="color" id="backdropCustomA" data-backdrop-custom="glassCustomA" value="${esc(custom("glassCustomA"))}"></label>
+          <label for="backdropCustomB">Color B<input type="color" id="backdropCustomB" data-backdrop-custom="glassCustomB" value="${esc(custom("glassCustomB"))}"></label>
+          <label for="backdropCustomAngle">Gradient angle (°)<input type="number" id="backdropCustomAngle" data-backdrop-custom="glassCustomAngle" min="0" max="360" step="1" value="${esc(custom("glassCustomAngle"))}"></label>
+          <label for="backdropCustomPattern">Pattern<select id="backdropCustomPattern" data-backdrop-custom="glassCustomPattern">${[["none", "None"], ["grid", "Grid"], ["dots", "Dots"], ["lines", "Diagonal lines"]].map(([value, text]) => option(value, text, custom("glassCustomPattern"))).join("")}</select></label>
+          <label for="backdropCustomImage" class="backdrop-custom-wide">Image URL (optional)<input type="url" id="backdropCustomImage" data-backdrop-custom="glassCustomImage" maxlength="500" placeholder="https://example.com/background.jpg" value="${esc(custom("glassCustomImage"))}" aria-describedby="backdropCustomError"></label>
+          <label for="backdropCustomDim" class="backdrop-custom-wide">Image dimming <output id="backdropDimValue">${esc(custom("glassCustomDim"))}%</output><input type="range" id="backdropCustomDim" data-backdrop-custom="glassCustomDim" min="70" max="95" step="1" value="${esc(custom("glassCustomDim"))}"></label>
+          <p class="alert backdrop-custom-wide" id="backdropCustomError" role="alert" hidden></p>
         </fieldset>
         <div class="material-stage" data-backdrop="${backdropOf(theme)}"><div class="material-preview" aria-label="Material preview"><span class="eyebrow">Preview only</span><h3>Your next learning session</h3><p>Clear details. Comfortable reading. A little more depth.</p><span class="badge">Ready to plan</span></div></div>
         <p class="muted small">The whole workspace previews the selected material and colors while you are on this tab. Save and publish to make it live.</p>
@@ -166,6 +177,23 @@
       });
     }
     function colorChanged() { find("#appearancePreviewPanel").hidden = true; status(); }
+    view.querySelectorAll("[data-backdrop-custom]").forEach(input => { input.oninput = () => {
+      if (!available) return;
+      const key = input.dataset.backdropCustom, numeric = ["glassCustomAngle", "glassCustomDim"].includes(key);
+      const value = numeric ? input.valueAsNumber : input.value.trim();
+      const problem = find("#backdropCustomError");
+      if (numeric ? !Number.isFinite(value) : key === "glassCustomImage" && value && !schema.CUSTOM_IMAGE.test(value)) {
+        if (problem) { problem.textContent = "Use an HTTPS or same-site path image URL without spaces, quotes or parentheses."; problem.hidden = false; }
+        return;
+      }
+      if (problem) problem.hidden = true;
+      theme[key] = value; theme.glassBackdrop = "custom";
+      view.querySelectorAll('[name="backdrop"]').forEach(radio => { radio.checked = radio.value === "custom"; });
+      const output = find("#backdropDimValue");
+      if (output) output.textContent = `${theme.glassCustomDim ?? custom("glassCustomDim")}%`;
+      find("#appearancePreviewPanel").hidden = true;
+      status();
+    }; });
     view.querySelectorAll('[name="backdrop"]').forEach(input => { input.onchange = () => {
       if (!available || !input.checked) return;
       theme.glassBackdrop = input.value;

@@ -45,13 +45,39 @@ body {
   --mat-bd-waves:
     repeating-radial-gradient(circle at 100% 0,transparent 0 calc(var(--mat-u) * .45),var(--mat-b) calc(var(--mat-u) * .45) calc(var(--mat-u) * .45 + 3px)),
     repeating-radial-gradient(circle at 0 100%,transparent 0 calc(var(--mat-u) * .45),var(--mat-c) calc(var(--mat-u) * .45) calc(var(--mat-u) * .45 + 3px));
+  /* Restrained presets stay within a few percent of the page color so dense content keeps full contrast. */
+  --mat-bd-corporate:
+    linear-gradient(180deg,color-mix(in srgb,var(--ui-primary) 88%,transparent) 0 3px,transparent 3px),
+    radial-gradient(circle,color-mix(in srgb,var(--ui-text) calc(9% * var(--mat-ent)),transparent) 0 1px,transparent 1.5px) 0 0 / calc(var(--mat-u) * .22) calc(var(--mat-u) * .22),
+    linear-gradient(180deg,color-mix(in srgb,var(--ui-primary) calc(14% * var(--mat-ent)),transparent) 0,transparent 36%);
+  --mat-bd-executive:
+    radial-gradient(ellipse 70% 55% at 100% 0,color-mix(in srgb,var(--ui-primary) calc(12% * var(--mat-ent)),transparent),transparent 70%),
+    linear-gradient(115deg,color-mix(in srgb,var(--ui-primary) calc(14% * var(--mat-ent)),transparent) 0,transparent 42%),
+    linear-gradient(295deg,color-mix(in srgb,var(--ui-text) calc(6% * var(--mat-ent)),transparent) 0,transparent 38%),
+    repeating-linear-gradient(135deg,color-mix(in srgb,var(--ui-text) calc(4.5% * var(--mat-ent)),transparent) 0 1px,transparent 1px calc(var(--mat-u) * .12));
+  /* Custom colors are blended into the page color, and image scrims are bounded, so any choice keeps text readable. */
+  --mat-bd-custom:
+    linear-gradient(var(--bd-grid-line) 0 1px,transparent 1px) 0 0 / calc(var(--mat-u) * .4) calc(var(--mat-u) * .4),
+    linear-gradient(90deg,var(--bd-grid-line) 0 1px,transparent 1px) 0 0 / calc(var(--mat-u) * .4) calc(var(--mat-u) * .4),
+    radial-gradient(circle,var(--bd-dots-dot) 0 1.3px,transparent 1.8px) 0 0 / calc(var(--mat-u) * .28) calc(var(--mat-u) * .28),
+    repeating-linear-gradient(135deg,var(--bd-lines-line) 0 1px,transparent 1px calc(var(--mat-u) * .2)),
+    linear-gradient(var(--bd-scrim),var(--bd-scrim)),
+    var(--bd-image) center / cover no-repeat,
+    linear-gradient(var(--bd-angle),color-mix(in srgb,var(--bd-a) calc(28% * var(--mat-ent)),var(--ui-bg)),color-mix(in srgb,var(--bd-b) calc(32% * var(--mat-ent)),var(--ui-bg)));
+  --bd-grid-line:color-mix(in srgb,var(--ui-text) calc(var(--bd-grid-o) * 7%),transparent);
+  --bd-dots-dot:color-mix(in srgb,var(--ui-text) calc(var(--bd-dots-o) * 10%),transparent);
+  --bd-lines-line:color-mix(in srgb,var(--ui-text) calc(var(--bd-lines-o) * 6%),transparent);
   --mat-backdrop:var(--mat-bd-shapes);
 }
+:root { --bd-a:#0f766e; --bd-b:#94a3b8; --bd-angle:135deg; --bd-image:none; --bd-scrim:transparent; --bd-grid-o:0; --bd-dots-o:0; --bd-lines-o:0; --mat-ent:1; }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="soft"] { --mat-backdrop:var(--mat-bd-soft); }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="shapes"] { --mat-backdrop:var(--mat-bd-shapes); }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="aurora"] { --mat-backdrop:var(--mat-bd-aurora); }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="grid"] { --mat-backdrop:var(--mat-bd-grid); }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="waves"] { --mat-backdrop:var(--mat-bd-waves); }
+:is(:root,.material-stage,.backdrop-swatch)[data-backdrop="corporate"] { --mat-backdrop:var(--mat-bd-corporate); }
+:is(:root,.material-stage,.backdrop-swatch)[data-backdrop="executive"] { --mat-backdrop:var(--mat-bd-executive); }
+:is(:root,.material-stage,.backdrop-swatch)[data-backdrop="custom"] { --mat-backdrop:var(--mat-bd-custom); }
 :is(:root,.material-stage,.backdrop-swatch)[data-backdrop="plain"] { --mat-backdrop:none; }
 :root {
   --mat-rim:color-mix(in srgb,var(--ui-primary) 28%,white);
@@ -66,7 +92,7 @@ body {
 :root[data-glass-style="liquid"], .material-preview[data-material="liquid"] { --mat-fx:saturate(200%) brightness(1.06); --mat-wash:var(--mat-wash-liquid); --mat-alpha-add:0; }
 :root[data-glass-style="frosted"], .material-preview[data-material="frosted"] { --mat-fx:saturate(115%); --mat-wash:var(--mat-wash-frosted); --mat-alpha-add:.06; }
 :root[data-backdrop]:not([data-backdrop="soft"]) body { background-image:none; }
-:root:is([data-backdrop="shapes"],[data-backdrop="aurora"],[data-backdrop="grid"],[data-backdrop="waves"]) body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; background:var(--mat-backdrop); }
+:root:is([data-backdrop="shapes"],[data-backdrop="aurora"],[data-backdrop="grid"],[data-backdrop="waves"],[data-backdrop="corporate"],[data-backdrop="executive"],[data-backdrop="custom"]) body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; background:var(--mat-backdrop); }
 :root[data-reduce-transparency="true"][data-glass="enabled"] body::before { display:none; }
 @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
   :root[data-glass="enabled"] :is(.hero,.progress-wrap,.q-card,.request-history,.topbar,.panel,.stat,.gate-card,.modal-box),

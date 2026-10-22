@@ -46,6 +46,26 @@ test("page background resolves auto by material and falls back safely for unknow
   s.api.clearColorPreview();
   assert.equal(s.root.dataset.backdrop, "shapes");
 });
+test("custom page background is sanitized before reaching CSS and dims images", () => {
+  const s = setup();
+  const base = { glassEnabled:false, glassBlur:12, glassTransparency:20, glassBackdrop:"custom" };
+  s.api.apply({ ...base, glassCustomA:"#112233", glassCustomB:"#445566", glassCustomAngle:200, glassCustomPattern:"grid", glassCustomImage:"https://cdn.example.com/bg.jpg", glassCustomDim:80 });
+  assert.equal(s.root.dataset.backdrop, "custom");
+  assert.equal(s.values["--bd-a"], "#112233");
+  assert.equal(s.values["--bd-angle"], "200deg");
+  assert.equal(s.values["--bd-image"], 'url("https://cdn.example.com/bg.jpg")');
+  assert.match(s.values["--bd-scrim"], /var\(--ui-bg\) 80%/);
+  assert.deepEqual([s.values["--bd-grid-o"], s.values["--bd-dots-o"], s.values["--bd-lines-o"]], ["1", "0", "0"]);
+  s.api.apply({ ...base, glassCustomA:"red;background:url(x)", glassCustomB:null, glassCustomAngle:9999, glassCustomPattern:"x", glassCustomImage:'https://e.test/a")};x{', glassCustomDim:5 });
+  assert.equal(s.values["--bd-a"], "#0f766e");
+  assert.equal(s.values["--bd-b"], "#94a3b8");
+  assert.equal(s.values["--bd-angle"], "135deg");
+  assert.equal(s.values["--bd-image"], "none");
+  assert.equal(s.values["--bd-scrim"], "transparent");
+  assert.deepEqual([s.values["--bd-grid-o"], s.values["--bd-dots-o"], s.values["--bd-lines-o"]], ["0", "0", "0"]);
+  s.api.apply({ ...base, glassBackdrop:"executive" });
+  assert.equal(s.root.dataset.backdrop, "executive");
+});
 test("shared layout applies on both modes, ignores draft mutations and resets legacy defaults", () => {
   const s = setup();
   for (const width of ["narrow", "standard", "wide"]) for (const density of ["compact", "comfortable"]) for (const cardStyle of ["outlined", "elevated", "flat"]) {

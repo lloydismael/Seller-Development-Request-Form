@@ -15,8 +15,9 @@ function setup(positional = false, mode = "api") {
       Object.values(nodes).forEach(node => { node.isConnected = false; });
       html = value;
       const colors = ["light", "dark"].flatMap(mode => [`${mode}Preset`, `${mode}PalettePreview`, ...["primary", "background"].flatMap(kind => [`${mode}${kind}`, `${mode}${kind}Value`])]);
-      nodes = Object.fromEntries([...colors, "appearancedensity", "appearancewidth", "appearancecardStyle", "appearanceStatus", "saveAppearance", "publishAppearance", "previewAppearance", "reloadAppearance", "appearancePreviewPanel", "iframe", ".material-preview", "liquid", "frosted", "solid", "backdrop-auto", "backdrop-aurora", "reduceMotion", "reduceTransparency", "bookings"].map(id => [id, { disabled:false, isConnected:true, checked:false, value:id, style:{ setProperty() {} }, dataset:{ preference:id, settingsNav:id }, scrollIntoView() {} }]));
+      nodes = Object.fromEntries([...colors, "appearancedensity", "appearancewidth", "appearancecardStyle", "appearanceStatus", "saveAppearance", "publishAppearance", "previewAppearance", "reloadAppearance", "appearancePreviewPanel", "iframe", ".material-preview", "liquid", "frosted", "solid", "backdrop-auto", "backdrop-aurora", "backdropCustomA", "backdropCustomImage", "backdropCustomAngle", "backdropCustomError", "backdropDimValue", "reduceMotion", "reduceTransparency", "bookings"].map(id => [id, { disabled:false, isConnected:true, checked:false, value:id, style:{ setProperty() {} }, dataset:{ preference:id, settingsNav:id }, scrollIntoView() {} }]));
       for (const key of ["density", "width", "cardStyle"]) nodes[`appearance${key}`].dataset.appearanceStyle = key;
+      for (const [id, key] of [["backdropCustomA", "glassCustomA"], ["backdropCustomImage", "glassCustomImage"], ["backdropCustomAngle", "glassCustomAngle"]]) nodes[id].dataset.backdropCustom = key;
       for (const mode of ["light", "dark"]) {
         nodes[`${mode}Preset`].dataset.palettePreset = mode;
         for (const kind of ["primary", "background"]) Object.assign(nodes[`${mode}${kind}`].dataset, { colorMode:mode, colorKind:kind });
@@ -25,7 +26,7 @@ function setup(positional = false, mode = "api") {
     get innerHTML() { return html; },
     querySelector(selector) { return nodes[selector.replace(/^#/, "")]; },
     querySelectorAll(selector) {
-      const ids = selector === '[name="material"]' ? ["liquid", "frosted", "solid"] : selector === '[name="backdrop"]' ? ["backdrop-auto", "backdrop-aurora"] : selector === "[data-preference]" ? ["reduceMotion", "reduceTransparency"] : selector === "[data-settings-nav]" ? ["bookings"] : Object.keys(nodes);
+      const ids = selector === '[name="material"]' ? ["liquid", "frosted", "solid"] : selector === '[name="backdrop"]' ? ["backdrop-auto", "backdrop-aurora"] : selector === "[data-backdrop-custom]" ? ["backdropCustomA", "backdropCustomImage", "backdropCustomAngle"] : selector === "[data-preference]" ? ["reduceMotion", "reduceTransparency"] : selector === "[data-settings-nav]" ? ["bookings"] : Object.keys(nodes);
       if (selector === "[data-appearance-style]") return [nodes.appearancedensity, nodes.appearancewidth, nodes.appearancecardStyle];
       if (selector === "[data-palette-preset]") return [nodes.lightPreset, nodes.darkPreset];
       if (selector === "[data-color-kind]") return [nodes.lightprimary, nodes.lightbackground, nodes.darkprimary, nodes.darkbackground];
@@ -179,13 +180,35 @@ test("Settings saves a page background choice and previews it across the workspa
   const s = setup();
   await s.window.SettingsUI.render("settings", s.view, s.ctx);
   assert.match(s.view.innerHTML, /name="backdrop" value="auto" checked/);
-  assert.equal((s.view.innerHTML.match(/name="backdrop"/g) || []).length, 7);
+  assert.equal((s.view.innerHTML.match(/name="backdrop"/g) || []).length, 10);
+  assert.match(s.view.innerHTML, /value="corporate"/);
+  assert.match(s.view.innerHTML, /value="executive"/);
   const aurora = s.node("backdrop-aurora"); aurora.value = "aurora"; aurora.checked = true; aurora.onchange();
   assert.equal(s.previews.at(-1).glassBackdrop, "aurora");
   assert.equal(s.node("publishAppearance").disabled, true);
   assert.equal(s.ctx.config.theme.glassBackdrop, "auto");
   s.node("saveAppearance").onclick(); await flush();
   assert.equal(s.calls[0][1].config.theme.glassBackdrop, "aurora");
+});
+test("Custom page background switches to Custom, rejects unsafe image URLs and saves valid values", async () => {
+  const s = setup();
+  await s.window.SettingsUI.render("settings", s.view, s.ctx);
+  const color = s.node("backdropCustomA"), image = s.node("backdropCustomImage"), angle = s.node("backdropCustomAngle");
+  color.value = "#123456"; color.oninput();
+  assert.equal(s.previews.at(-1).glassBackdrop, "custom");
+  assert.equal(s.previews.at(-1).glassCustomA, "#123456");
+  const before = s.previews.length;
+  image.value = 'https://e.test/a")'; image.oninput();
+  assert.equal(s.node("backdropCustomError").hidden, false);
+  assert.equal(s.previews.length, before);
+  image.value = "https://cdn.example.com/bg.jpg"; image.oninput();
+  assert.equal(s.node("backdropCustomError").hidden, true);
+  assert.equal(s.previews.at(-1).glassCustomImage, "https://cdn.example.com/bg.jpg");
+  angle.valueAsNumber = NaN; angle.oninput();
+  assert.equal(s.previews.at(-1).glassCustomAngle, 135);
+  s.node("saveAppearance").onclick(); await flush();
+  const theme = s.calls[0][1].config.theme;
+  assert.deepEqual([theme.glassBackdrop, theme.glassCustomA, theme.glassCustomImage], ["custom", "#123456", "https://cdn.example.com/bg.jpg"]);
 });
 for (const positional of [false, true]) {
   test(`Settings saves presets before publishing with ${positional ? "positional" : "object"} transport`, async () => {

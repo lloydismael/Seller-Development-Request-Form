@@ -64,12 +64,30 @@
     } catch {}
   }
   let currentTheme = cachedPalette(), previewTheme, publishedMaterial;
-  const backdrops = ["soft", "shapes", "aurora", "grid", "waves", "plain"];
+  const backdrops = ["soft", "shapes", "aurora", "grid", "waves", "corporate", "executive", "plain", "custom"];
+  const customDefaults = { glassCustomA:"#0f766e", glassCustomB:"#94a3b8", glassCustomAngle:135, glassCustomPattern:"none", glassCustomDim:85 };
+  const customImage = /^(?=.{1,500}$)(?:https:\/\/|\/(?!\/))[^\s"'()<>\\]+$/i;
+  // Values are re-validated here so a malformed theme can never inject CSS.
+  function applyCustomBackdrop(theme) {
+    const color = (value, fallback) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+    const range = (value, min, max, fallback) => Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+    const pattern = ["grid", "dots", "lines"].includes(theme.glassCustomPattern) ? theme.glassCustomPattern : "none";
+    const image = typeof theme.glassCustomImage === "string" && customImage.test(theme.glassCustomImage) ? theme.glassCustomImage : "";
+    const dim = range(theme.glassCustomDim, 70, 95, customDefaults.glassCustomDim);
+    const set = (name, value) => root.style.setProperty(name, value);
+    set("--bd-a", color(theme.glassCustomA, customDefaults.glassCustomA));
+    set("--bd-b", color(theme.glassCustomB, customDefaults.glassCustomB));
+    set("--bd-angle", `${range(theme.glassCustomAngle, 0, 360, customDefaults.glassCustomAngle)}deg`);
+    set("--bd-image", image ? `url("${image}")` : "none");
+    set("--bd-scrim", image ? `color-mix(in srgb,var(--ui-bg) ${dim}%,transparent)` : "transparent");
+    ["grid", "dots", "lines"].forEach(name => set(`--bd-${name}-o`, pattern === name ? "1" : "0"));
+  }
   function applyMaterial(theme) {
     root.dataset.glass = theme.glassEnabled ? "enabled" : "disabled";
     root.dataset.glassStyle = !theme.glassEnabled ? "solid" : theme.glassBlur <= 6 ? "liquid" : "frosted";
     // "auto" keeps the original gentle wash for solid surfaces and the shapes backdrop for glass.
     root.dataset.backdrop = backdrops.includes(theme.glassBackdrop) ? theme.glassBackdrop : theme.glassEnabled ? "shapes" : "soft";
+    applyCustomBackdrop(theme);
     root.style.setProperty("--glass-alpha", String(1 - theme.glassTransparency / 100));
     root.style.setProperty("--glass-blur", `${theme.glassBlur}px`);
   }
@@ -109,7 +127,7 @@
       root.dataset.density = theme.density || "comfortable";
       root.dataset.width = theme.width || "standard";
       root.dataset.cardStyle = theme.cardStyle || "outlined";
-      publishedMaterial = { glassEnabled:theme.glassEnabled, glassTransparency:theme.glassTransparency, glassBlur:theme.glassBlur, glassBackdrop:theme.glassBackdrop };
+      publishedMaterial = { ...theme };
       applyMaterial(theme);
     },
     preferences: () => ({ reduceMotion:preferences.reduceMotion === true, reduceTransparency:preferences.reduceTransparency === true }),

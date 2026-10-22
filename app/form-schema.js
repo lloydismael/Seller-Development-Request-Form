@@ -11,8 +11,12 @@
   const REQUIRED = ["requestor", "division", "category", "trainingDate", "facilitator", "time", "venue"];
   const FIELDS = [...REQUIRED, "requesterEmail", "director", "topic", "participants", "recommendations"];
   const TYPES = ["text", "textarea", "email", "number", "date", "choice", "multi"];
-  const BACKDROPS = Object.freeze(["auto", "soft", "shapes", "aurora", "grid", "waves", "plain"]);
-  const GLASS_DEFAULTS = Object.freeze({ glassEnabled:false, glassTransparency:20, glassBlur:12, glassBackdrop:"auto" });
+  const BACKDROPS = Object.freeze(["auto", "soft", "shapes", "aurora", "grid", "waves", "corporate", "executive", "plain", "custom"]);
+  const CUSTOM_PATTERNS = Object.freeze(["none", "grid", "dots", "lines"]);
+  // HTTPS or same-site paths only; quotes, parentheses and backslashes cannot break out of a CSS url().
+  const CUSTOM_IMAGE = /^(?=.{1,500}$)(?:https:\/\/|\/(?!\/))[^\s"'()<>\\]+$/i;
+  const GLASS_DEFAULTS = Object.freeze({ glassEnabled:false, glassTransparency:20, glassBlur:12, glassBackdrop:"auto",
+    glassCustomA:"#0f766e", glassCustomB:"#94a3b8", glassCustomAngle:135, glassCustomPattern:"none", glassCustomImage:"", glassCustomDim:85 });
   const unsafe = new Set(["__proto__", "prototype", "constructor"]);
   const fail = message => { throw Object.assign(new Error(message), { statusCode:400, expose:true }); };
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -76,6 +80,14 @@
     out.theme = { ...GLASS_DEFAULTS, ...out.theme };
     if (typeof out.theme.glassEnabled !== "boolean") fail("Glass enabled must be boolean.");
     if (!BACKDROPS.includes(out.theme.glassBackdrop)) fail("Invalid page background.");
+    for (const key of ["glassCustomA", "glassCustomB"]) {
+      if (typeof out.theme[key] !== "string" || !/^#[0-9a-f]{6}$/i.test(out.theme[key])) fail("Invalid custom background color.");
+    }
+    for (const [key, min, max] of [["glassCustomAngle", 0, 360], ["glassCustomDim", 70, 95]]) {
+      if (typeof out.theme[key] !== "number" || !Number.isFinite(out.theme[key]) || out.theme[key] < min || out.theme[key] > max) fail("Invalid custom background setting: " + key);
+    }
+    if (!CUSTOM_PATTERNS.includes(out.theme.glassCustomPattern)) fail("Invalid custom background pattern.");
+    if (typeof out.theme.glassCustomImage !== "string" || (out.theme.glassCustomImage !== "" && !CUSTOM_IMAGE.test(out.theme.glassCustomImage))) fail("Custom background image must be an HTTPS or same-site path URL.");
     for (const [key, max] of [["glassTransparency", 40], ["glassBlur", 20]]) {
       if (typeof out.theme[key] !== "number" || !Number.isFinite(out.theme[key]) || out.theme[key] < 0 || out.theme[key] > max) fail("Invalid glass setting: " + key);
     }
@@ -204,5 +216,5 @@
     if (REQUIRED.some(f => !fields[f])) fail("Missing essential booking answers.");
     return size({ ...fields, answerValues, answers, answerSnapshot });
   }
-  return { MAX_BYTES, REQUIRED, FIELDS, TYPES, GLASS_DEFAULTS, BACKDROPS, validate, submission, validDate, validTime, size };
+  return { MAX_BYTES, REQUIRED, FIELDS, TYPES, GLASS_DEFAULTS, BACKDROPS, CUSTOM_PATTERNS, CUSTOM_IMAGE, validate, submission, validDate, validTime, size };
 });

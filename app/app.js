@@ -6,7 +6,8 @@
   const container = document.getElementById("questions"), form = document.getElementById("bookingForm");
   const submit = document.getElementById("submitBtn"), error = document.getElementById("formError");
   const reducedMotion = { get matches() { return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.reduceMotion === "true"; } };
-  let submitting = false, activeQuestionId, requestorComplete = false;
+  let submitting = false, activeQuestionId, requestorComplete = false, returnToReview = false;
+  const REVIEW_ID = "__review", review = document.getElementById("review");
   let autoTimer, avail = null, availabilityState = "idle", requestVersion = 0, confirmationVersion = 0;
   const choiceObj = c => typeof c === "string" ? { label:c } : c;
   const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
@@ -147,54 +148,73 @@
     cancelAuto();
     const path = visiblePath(), active = new Set(path), nodes = [];
     Object.keys(answers).forEach(id => { if (!active.has(id)) { delete answers[id]; delete otherText[id]; } });
-    let section;
+    let section, heading;
     // order is presentation metadata, not permission to rewrite the validated graph.
     path.forEach((id, i) => {
       const next = Q[id].section;
       if (next && next !== section) {
         const definition = CFG.sections.find(s => s.id === next);
-        const heading = document.createElement("header"); heading.className = "form-section";
+        heading = document.createElement("header"); heading.className = "form-section";
         const title = document.createElement("h2"); title.textContent = definition.title; heading.append(title);
         if (definition.description) { const description = document.createElement("p"); description.textContent = definition.description; heading.append(description); }
-        nodes.push(heading);
       }
-      section = next; nodes.push(renderQuestion(id,i+1));
+      section = next;
+      const card = renderQuestion(id,i+1);
+      // Flashcards show one question at a time, so a section heading travels with its first card.
+      if (heading) { card.prepend(heading); heading = undefined; }
+      nodes.push(card);
     });
+    nodes.push(review);
     container.replaceChildren(...nodes);
+    document.body.classList.add("deck-mode");
     document.body.classList.toggle("form-start",path.length === 1 && Q[path[0]].field === "requestor" && Q[path[0]].required);
     highlightQuestion(active.has(activeQuestionId) ? activeQuestionId : path.find(id => !isAnswered(id)) || path[0]);
     syncOptions(); updateProgress();
   }
 
   function highlightQuestion(id) {
+    const previous = activeQuestionId, cards = Array.from(container.querySelectorAll(".q-card"));
     activeQuestionId = id;
-    container.querySelectorAll(".q-card").forEach(card => {
+    const direction = cards.findIndex(card => card.dataset.id === id) < cards.findIndex(card => card.dataset.id === previous) ? -1 : 1;
+    cards.forEach(card => {
       const active = card.dataset.id === id;
+      // Focus re-announces the active card; only a real change flips the deck.
+      if (previous !== id) {
+        card.classList.toggle("flip-back",direction < 0);
+        card.classList.toggle("is-leaving",card.classList.contains("is-active") && !active);
+        card.classList.toggle("is-entering",active);
+      }
       card.classList.toggle("is-active",active);
       if (active) card.setAttribute("aria-current","step");
       else card.removeAttribute("aria-current");
     });
+    updateNav();
   }
   container.addEventListener("focusin",e => {
     const card = e.target.closest(".q-card");
     if (card) highlightQuestion(card.dataset.id);
   });
-
-  function goNext(fromId) {
+  function goNext(fromId,delay = 220) {
     cancelAuto();
     autoTimer = setTimeout(() => {
       if (submitting || form.hidden || invalidReason(fromId)) return;
       const path = visiblePath(), i = path.indexOf(fromId);
       if (i < 0) return;
-      const nextId = path.slice(i+1).find(id => !isAnswered(id));
-      const target = nextId ? container.querySelector(`[data-id="${nextId}"]`) : form.querySelector(".submit-bar");
+      let nextId = path[i+1];
+      // After the last question, or when returning from an edit, go to the confirmation card once everything is valid.
+      if ((returnToReview || !nextId) && path.every(id => !invalidReason(id))) nextId = REVIEW_ID;
+      if (!nextId) return;
+      const target = container.querySelector(`[data-id="${nextId}"]`);
       if (!target) return;
-      target.scrollIntoView({ behavior:reducedMotion.matches ? "auto" : "smooth",block:"center" });
-      if (!reducedMotion.matches && nextId) {
+      if (nextId === REVIEW_ID) { returnToReview = false; renderReview(path); }
+      // Hidden flashcards cannot take focus, so flip to the next one first.
+      highlightQuestion(nextId);
+      target.scrollIntoView({ behavior:reducedMotion.matches ? "auto" : "smooth",block:nextId === REVIEW_ID ? "start" : "center" });
+      if (!reducedMotion.matches && nextId !== REVIEW_ID) {
         target.classList.add("pulse"); setTimeout(() => target.classList.remove("pulse"),900);
       }
       (target.querySelector(".text-in:not(.date-in),.q-title,button") || target).focus({ preventScroll:true });
-    },120);
+    },delay);
   }
 
   function invalidReason(id) {
@@ -219,6 +239,72 @@
     const inline = card.querySelector(".err"); inline.textContent = message; inline.hidden = false; card.classList.add("invalid");
     card.querySelectorAll("input,textarea").forEach(el => el.setAttribute("aria-invalid","true"));
   }
+
+  container.addEventListener("animationend",e => {
+    const card = e.target;
+    if (!card.classList?.contains("q-card")) return;
+    if (e.animationName === "flipOut") card.classList.remove("is-leaving");
+    else if (e.animationName === "flipIn") card.classList.remove("is-entering");
+    else if (e.animationName === "shake") card.classList.remove("shake");
+  });
+
+  function updateNav() {
+    const nav = document.getElementById("deckNav"), path = visiblePath(), i = path.indexOf(activeQuestionId);
+    nav.hidden = !loaded || i < 0;
+    nav.dataset.last = String(i === path.length - 1);
+    document.getElementById("backBtn").disabled = i <= 0;
+    document.getElementById("nextBtn").textContent = returnToReview || i === path.length - 1 ? "Review" : "Next";
+    const lengths = routeLengths(), total = Math.max(...lengths);
+    document.getElementById("deckStep").textContent = `Question ${i + 1}${lengths.length === 1 ? ` of ${total}` : ""}`;
+  }
+  function focusCard(card) {
+    (card.querySelector(".text-in:not(.date-in),.q-title,button") || card).focus({ preventScroll:true });
+  }
+  function goBack() {
+    if (submitting) return;
+    cancelAuto();
+    const path = visiblePath(), i = path.indexOf(activeQuestionId);
+    if (i <= 0) return;
+    const card = container.querySelector(`[data-id="${path[i-1]}"]`);
+    if (!card) return;
+    highlightQuestion(path[i-1]);
+    focusCard(card);
+  }
+  function goForward() {
+    if (submitting || !activeQuestionId) return;
+    const id = activeQuestionId, card = container.querySelector(`[data-id="${id}"]`), reason = invalidReason(id);
+    if (reason) {
+      showError(card,reason);
+      card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
+      return;
+    }
+    if (Q[id].field === "requestor" && Q[id].required && !requestorComplete) { requestorComplete = true; render(); }
+    goNext(id,0);
+  }
+  document.getElementById("backBtn").addEventListener("click",goBack);
+  document.getElementById("nextBtn").addEventListener("click",goForward);
+
+  const longDate = s => parseYmd(s).toLocaleDateString("en-PH",{ weekday:"long",month:"long",day:"numeric",year:"numeric" });
+  const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+  function renderReview(path = visiblePath()) {
+    const list = document.getElementById("reviewList");
+    list.innerHTML = path.map((id, i) => {
+      const v = valueOf(id), shown = Array.isArray(v) ? v.join("; ") : Q[id].type === "date" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? longDate(v) : String(v);
+      const wide = Q[id].type === "textarea" || shown.length > 48;
+      return `<li class="review-cell${wide ? " wide" : ""}"><button type="button" class="review-item${shown ? "" : " empty"}" data-edit="${esc(id)}" aria-label="Edit ${esc(Q[id].title)}: ${esc(shown || "not answered")}"><span class="review-q"><span class="review-n">${i + 1}</span><span class="review-t">${esc(Q[id].title)}</span></span><span class="review-a">${esc(shown || "Not answered")}</span><span class="review-pen" aria-hidden="true">${PENCIL}<span>Edit</span></span></button></li>`;
+    }).join("");
+    document.getElementById("reviewCount").textContent = `${path.length} answers`;
+    Array.from(list.children).forEach((cell, i) => cell.style.setProperty("--i",i));
+  }
+  review.addEventListener("click",e => {
+    if (submitting) return;
+    const edit = e.target.closest("[data-edit]"), back = e.target.closest("#reviewBackBtn");
+    const path = visiblePath(), id = edit ? edit.dataset.edit : back ? path[path.length - 1] : undefined;
+    const card = id && container.querySelector(`[data-id="${id}"]`);
+    if (!card) return;
+    cancelAuto(); error.hidden = true; returnToReview = !!edit;
+    highlightQuestion(id); focusCard(card);
+  });
 
   // Answer invalidation must work even when scheduling cards are off-screen.
   function reconcileAvailability() {
@@ -245,6 +331,7 @@
     reconcileAvailability();
     container.querySelectorAll("[data-id]").forEach(card => {
     const id = card.dataset.id, q = Q[id], ready = availabilityReady();
+    if (!q) return;
     if (scheduling(id)) {
       card.querySelector(".avail-hint").textContent = availabilityState === "loading" ? "Checking availability…" : availabilityState === "error" ? "We couldn’t check availability. Retry, or choose another date."
         : ready ? `Availability for ${parseYmd(avail.date).toLocaleDateString("en-PH",{ month:"short",day:"numeric" })}. ${id === "facilitator" ? "Unavailable facilitators are disabled." : !isAnswered("facilitator") ? "Choose a facilitator first." : "Booked and overlapping slots are disabled."}` : "Choose a training date first.";
@@ -320,7 +407,7 @@
   });
   function completeRequestor(e) {
     const card = e.target.closest(".q-card");
-    if (!card || submitting || Q[card.dataset.id].field !== "requestor" || !Q[card.dataset.id].required) return;
+    if (!card || submitting || Q[card.dataset.id]?.field !== "requestor" || !Q[card.dataset.id].required) return;
     const id = card.dataset.id;
     if (invalidReason(id)) {
       if (e.type === "keydown") showError(card,invalidReason(id));
@@ -362,14 +449,18 @@
     if (submitting) return;
     answers.date = ds; cancelAuto();
     const card = container.querySelector('[data-id="date"]');
-    if (card) card.replaceWith(renderQuestion("date",visiblePath().indexOf("date")+1));
+    if (card) {
+      const next = renderQuestion("date",visiblePath().indexOf("date")+1), heading = card.querySelector(".form-section");
+      if (heading) next.prepend(heading);
+      card.replaceWith(next);
+    }
     highlightQuestion("date");
     loadAvailability(); updateProgress();
     if (validDate(ds)) { error.hidden = true; goNext("date"); }
   }
   container.addEventListener("click",e => {
     if (submitting) return;
-    const card = e.target.closest("[data-id]"); if (!card) return;
+    const card = e.target.closest("[data-id]"); if (!card || card === review) return;
     highlightQuestion(card.dataset.id);
     if (e.target.closest(".retry-btn")) { loadAvailability(); return; }
     const date = e.target.closest(".date-tile"); if (date) { setDate(date.dataset.date); return; }
@@ -399,6 +490,8 @@
       else clearError(card);
     });
     if (firstBad) {
+      returnToReview = true;
+      highlightQuestion(firstBad.dataset.id);
       firstBad.scrollIntoView({ behavior:reducedMotion.matches ? "auto" : "smooth",block:"center" });
       (firstBad.querySelector('input:checked:not(:disabled),textarea,input:not(:disabled)') || firstBad.querySelector(".q-title")).focus({ preventScroll:true });
       return;
@@ -416,8 +509,6 @@
       await window.RequestHistory?.ready;
       const saved = await S.create(rec);
       form.hidden = true; document.getElementById("progressWrap").hidden = true; document.getElementById("thanks").hidden = false;
-      const snapshot = saved?.answerSnapshot || validated.answerSnapshot;
-      document.getElementById("summary").innerHTML = snapshot.map(({title, value}) => `<tr><th scope="row">${esc(title)}</th><td>${esc(Array.isArray(value) ? value.join("; ") : value)}</td></tr>`).join("");
       const warning = document.getElementById("saveWarning");
       warning.textContent = saved?.warning || (saved?.auditRecorded === false ? "Booking saved, but activity recording failed. Do not resubmit this booking." : ""); warning.hidden = !warning.textContent;
       window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
@@ -436,7 +527,7 @@
     } finally {
       submitting = false; container.inert = false; form.removeAttribute("aria-busy");
       container.querySelectorAll("input,textarea,button").forEach(el => el.disabled = false);
-      syncOptions(); submit.textContent = "Submit request"; updateProgress();
+      syncOptions(); submit.textContent = "Confirm & submit"; updateProgress();
     }
   });
   document.getElementById("againBtn").addEventListener("click",() => {
@@ -446,7 +537,7 @@
     Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
     avail = null; availabilityState = "idle"; error.hidden = true;
     document.getElementById("thanks").hidden = true; document.getElementById("progressWrap").hidden = false;
-    requestorComplete = false;
+    requestorComplete = false; returnToReview = false;
     form.hidden = false; render(); window.scrollTo({ top:0,behavior:reducedMotion.matches ? "auto" : "smooth" });
     (container.querySelector(".text-in,.q-title") || container).focus({ preventScroll:true });
   });
@@ -471,13 +562,13 @@
       const config = schema.validate(response.config);
       CFG = config; Q = config.questions; formVersion = response.version;
       Object.keys(answers).forEach(k => delete answers[k]); Object.keys(otherText).forEach(k => delete otherText[k]);
-      avail = null; availabilityState = "idle"; stale = false; loaded = true; requestorComplete = false;
+      avail = null; availabilityState = "idle"; stale = false; loaded = true; requestorComplete = false; returnToReview = false;
       document.getElementById("refreshFormBtn").hidden = true; error.hidden = true;
       document.getElementById("formTitle").textContent = CFG.title; document.title = preview ? `Draft preview — ${CFG.title}` : CFG.title;
       applyTheme(CFG.theme); render(); panel.hidden = true; form.hidden = false;
       document.getElementById("progressWrap").hidden = false;
       document.getElementById("previewBanner").hidden = !preview;
-      submit.textContent = preview ? "Submissions disabled in preview" : "Submit request";
+      submit.textContent = preview ? "Submissions disabled in preview" : "Confirm & submit";
     } catch (err) {
       loaded = false; container.replaceChildren();
       message.textContent = `The ${preview ? "authenticated draft" : "published form"} could not be loaded: ${err.message} The form is unavailable until loading succeeds.`;

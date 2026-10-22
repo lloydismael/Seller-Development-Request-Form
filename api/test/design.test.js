@@ -94,8 +94,8 @@ test("public redesign keeps hidden legends and accessible progress while preserv
   assert.match(styles, /#questions \.q-card\.is-active \{ scale:1\.06/);
   assert.match(styles, /@media \(min-width:641px\) \{ \.wrap \{ padding-left:40px; padding-right:40px; \}/);
   assert.match(styles, /@media \(max-width:640px\) \{\s*\.wrap \{ padding-left:20px; padding-right:20px; \}\s*#questions \.q-card\.is-active \{ scale:1\.03/);
-  assert.match(styles, /transform-origin:center; transition:scale \.36s cubic-bezier\(\.22,1,\.36,1\)/);
-  assert.match(styles, /transition:scale \.36s[^;]*filter \.25s ease/);
+  assert.match(styles, /transform-origin:center; transition:scale \.5s var\(--spring\)/);
+  assert.match(styles, /transition:scale \.5s[^;]*filter \.25s ease/);
   assert.match(styles, /:not\(:focus-within\):not\(:hover\):not\(\.invalid\)[^}]*filter:blur\(\.7px\)/);
   assert.match(styles, /prefers-reduced-motion:reduce[\s\S]*#questions:has\(\.is-active\) \.q-card \{ filter:none; \}/);
   assert.match(styles, /prefers-reduced-motion:reduce[\s\S]*#questions \.q-card\.is-active \{ scale:1; \}/);
@@ -136,6 +136,21 @@ test("initial name section is centered in the available viewport without a blank
   assert.match(styles, /body\.form-start \{[^}]*min-height:100dvh;[^}]*display:flex;[^}]*flex-direction:column;/);
   assert.match(styles, /\.form-start \.wrap \{[^}]*flex:1;[^}]*width:100%;[^}]*justify-content:center;/);
   assert.match(styles, /\.form-start \.submit-bar:has\(#submitBtn\[hidden\]\) \{ display:none; \}/);
+});
+
+test("questions render as a flashcard deck that flips between cards with spring easing", () => {
+  assert.match(html, /id="deckNav"[\s\S]*id="backBtn"[\s\S]*id="deckStep"[\s\S]*id="nextBtn"/);
+  assert.match(html, /id="review"[^>]*data-id="__review"[\s\S]*id="reviewList"[\s\S]*id="reviewBackBtn"[\s\S]*type="submit" id="submitBtn"[^>]*>Confirm &amp; submit/);
+  assert.doesNotMatch(html, /id="summary"/);
+  assert.match(styles, /body\.deck-mode \{[^}]*min-height:100dvh;[^}]*display:flex;/);
+  assert.match(styles, /\.deck-mode \.wrap \{[^}]*justify-content:center;/);
+  assert.match(styles, /#questions > \.q-card \{[^}]*grid-area:1\/1;[^}]*display:none;/);
+  assert.match(styles, /#questions > \.q-card\.is-active,#questions > \.q-card\.is-leaving \{ display:block; \}/);
+  assert.match(styles, /@keyframes flipOut[^\n]*rotateY\(calc\(-90deg \* var\(--flip,1\)\)\)/);
+  assert.match(styles, /@keyframes flipIn[^\n]*rotateY\(calc\(90deg \* var\(--flip,1\)\)\)/);
+  assert.match(styles, /\.is-entering \{ animation:flipIn \.64s var\(--spring\)/);
+  assert.match(styles, /--spring:cubic-bezier\(\.34,1\.56,\.64,1\)/);
+  assert.match(styles, /prefers-reduced-motion:reduce\) \{\s*#questions > \.q-card\.is-leaving \{ display:none; \}/);
 });
 
 test("programmatically focused question titles have no colored outline while controls retain focus indicators", () => {

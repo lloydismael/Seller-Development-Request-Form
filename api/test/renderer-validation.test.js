@@ -261,37 +261,72 @@ test("advancing from the completed name centers and focuses the second question"
   const context = {
     cancelAuto() {}, setTimeout:fn => { advance = fn; }, submitting:false, form:{ hidden:false },
     invalidReason:() => "", visiblePath:() => ["name", "division"], isAnswered:id => id === "name",
-    reducedMotion:{ matches:true }, container:{ querySelector:selector => {
+    reducedMotion:{ matches:true }, returnToReview:false, REVIEW_ID:"__review", highlightQuestion:id => calls.push(`flip:${id}`), container:{ querySelector:selector => {
       assert.equal(selector, '[data-id="division"]'); return target;
     } }
   };
   vm.runInNewContext(source.slice(source.indexOf("  function goNext("), source.indexOf("  function invalidReason(")), context);
   context.goNext("name"); advance();
-  assert.deepEqual(calls, ["center", true]);
+  assert.deepEqual(calls, ["flip:division", "center", true]);
+});
+
+test("finishing the last question flips to the review card, and edits return there", () => {
+  const calls = [], review = {
+    scrollIntoView:options => calls.push(options.block),
+    querySelector:() => ({ focus:options => calls.push(options.preventScroll) })
+  };
+  let advance, bad = false;
+  const context = {
+    cancelAuto() {}, setTimeout:fn => { advance = fn; }, submitting:false, form:{ hidden:false },
+    invalidReason:() => bad ? "bad" : "", visiblePath:() => ["name", "division"], returnToReview:false, REVIEW_ID:"__review",
+    renderReview:() => calls.push("render-review"), highlightQuestion:id => calls.push(`flip:${id}`),
+    reducedMotion:{ matches:true }, container:{ querySelector:selector => {
+      assert.equal(selector, '[data-id="__review"]'); return review;
+    } }
+  };
+  vm.runInNewContext(source.slice(source.indexOf("  function goNext("), source.indexOf("  function invalidReason(")), context);
+  context.goNext("division"); advance();
+  assert.deepEqual(calls, ["render-review", "flip:__review", "start", true]);
+  calls.length = 0; context.returnToReview = true;
+  context.goNext("name"); advance();
+  assert.equal(calls[1], "flip:__review"); assert.equal(context.returnToReview, false);
+  calls.length = 0; bad = true; context.goNext("division"); advance();
+  assert.deepEqual(calls, []);
 });
 
 test("active question glow follows focus and exposes the current step", () => {
   const cards = ["name", "division"].map(id => ({
     dataset:{ id }, classes:new Set(), attributes:{},
-    classList:{ toggle(name, active) { if (active) this.owner.classes.add(name); else this.owner.classes.delete(name); } },
+    classList:{
+      toggle(name, active) { if (active) this.owner.classes.add(name); else this.owner.classes.delete(name); },
+      contains(name) { return this.owner.classes.has(name); }
+    },
     setAttribute(name, value) { this.attributes[name] = value; },
     removeAttribute(name) { delete this.attributes[name]; }
   }));
   cards.forEach(card => { card.classList.owner = card; });
   let focus;
-  const context = { activeQuestionId:undefined, container:{
+  const context = { activeQuestionId:undefined, updateNav() {}, container:{
     querySelectorAll:() => cards,
     addEventListener:(type, handler) => { assert.equal(type, "focusin"); focus = handler; }
   } };
   vm.runInNewContext(source.slice(source.indexOf("  function highlightQuestion("), source.indexOf("  function goNext(")), context);
   context.highlightQuestion("name");
   assert.ok(cards[0].classes.has("is-active"));
+  assert.ok(cards[0].classes.has("is-entering"));
   assert.equal(cards[0].attributes["aria-current"], "step");
   focus({ target:{ closest:() => cards[1] } });
   assert.ok(!cards[0].classes.has("is-active"));
+  assert.ok(cards[0].classes.has("is-leaving"));
+  assert.ok(!cards[0].classes.has("flip-back"));
   assert.equal(cards[0].attributes["aria-current"], undefined);
   assert.ok(cards[1].classes.has("is-active"));
+  assert.ok(cards[1].classes.has("is-entering"));
   assert.equal(cards[1].attributes["aria-current"], "step");
+  context.highlightQuestion("name");
+  assert.ok(cards[0].classes.has("flip-back") && cards[1].classes.has("is-leaving"));
+  context.highlightQuestion("name");
+  assert.ok(cards[0].classes.has("is-active") && cards[1].classes.has("is-leaving"));
 });
 
 test("optional requestor does not block configured routing", () => {

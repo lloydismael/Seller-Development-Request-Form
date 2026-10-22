@@ -47,20 +47,30 @@
     </section>
     <aside id="previewBanner" class="notice" role="status" hidden>Authenticated draft preview — submissions are disabled. This preview does not save any bookings.</aside>
     <form id="bookingForm" novalidate hidden>
+      <section id="review" class="q-card review" data-id="__review" aria-labelledby="reviewTitle">
+        <header class="q-head"><span class="q-num" aria-hidden="true">✓</span><h2 class="q-title" id="reviewTitle" tabindex="-1">Review your request</h2><span class="review-count" id="reviewCount"></span></header>
+        <p class="hint" id="reviewHint">Nothing has been sent yet. Select any answer to change it, then confirm.</p>
+        <ul class="review-list" id="reviewList"></ul>
+        <div class="review-actions">
+          <button type="button" id="reviewBackBtn" class="btn nav-back">Back</button>
+          <button type="submit" id="submitBtn" class="btn primary lg" hidden disabled>Confirm &amp; submit</button>
+        </div>
+      </section>
       <div id="questions"></div>
+      <nav id="deckNav" class="deck-nav" aria-label="Question navigation" hidden>
+        <button type="button" id="backBtn" class="btn nav-back" disabled>Back</button>
+        <span id="deckStep" class="deck-step" aria-live="polite"></span>
+        <button type="button" id="nextBtn" class="btn primary nav-next">Next</button>
+      </nav>
       <div id="formError" class="err form-error" role="alert" tabindex="-1" hidden></div>
       <button type="button" id="refreshFormBtn" class="btn" hidden>Load latest form (clears current answers)</button>
-      <div class="submit-bar">
-        <button type="submit" id="submitBtn" class="btn primary lg" hidden disabled>Submit request</button>
-      </div>
     </form>
 
     <section id="thanks" class="q-card thanks" hidden>
       <div class="thanks-icon" aria-hidden="true">✓</div>
       <h2 tabindex="-1">Your booking request has been submitted</h2>
-      <p>Status: <strong>Pending approval</strong>. Here is a summary of your request:</p>
+      <p>Status: <strong>Pending approval</strong>. You can review the details any time under My requests.</p>
       <p id="saveWarning" class="notice" role="status" hidden></p>
-      <table class="summary"><tbody id="summary"></tbody></table>
       <div class="submit-bar"><button type="button" id="againBtn" class="btn primary">Submit another request</button> <button type="button" id="thanksHistoryBtn" class="btn">View my requests</button></div>
     </section>
   </main>
